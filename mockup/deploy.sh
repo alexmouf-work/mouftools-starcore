@@ -12,4 +12,5 @@ doc = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n' + s
 open("../public/index.html", "w").write(doc)
 PY
 cp site/tex.webp site/planets.webp site/journey.json site/journey.txt site/updates.json site/updates.txt ../public/
+cp site/favicon.ico site/icon-512.png site/icon-192.png site/favicon-32.png site/favicon-16.png site/apple-touch-icon.png ../public/
 ls -la ../public

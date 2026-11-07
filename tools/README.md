@@ -26,3 +26,5 @@ checkout of `alexmouf-work/starcore` (default `../starcore`, or set `STARCORE_AS
 - `probes/*.java` — read the game's own answers (planet traits, block tints, skies, cube nets, the galaxy, golden trees, Trippy kinds,
   coagulus piles, auroras, the home system, the arm beyond the galaxy's radius). Compile against `./gradlew classes printCP` with the build's JDK; call `Galaxy.shape(seed)` first, or traits
   come from the wrong galaxy. The seed is `scripts/checks/world_seed.py run/world`.
+- `favicon.py outdir` — the favicon: one black hole as the mod's Detailed Black Holes pass draws it (the same maths as the site's
+  lens), over a lensed starfield, rendered at 1024 and filtered down to 512, 192, 180, 32, 16 and a multi-size .ico.
