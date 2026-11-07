@@ -251,14 +251,20 @@ function quadPack(meta, bin) {
   return { meta, bin, rects };
 }
 function quadMats(o = {}) {
-  const mk = blend => new THREE.ShaderMaterial({
+  // ONE_SIDED for cube faces: the game culls back faces, and two touching leaves (or any two faces back to back) otherwise
+  // show both, coplanar, and fight. Crossed plants and tilted parts stay two-sided, as they are in the game.
+  const mk = (blend, one) => new THREE.ShaderMaterial({ defines: one ? { ONE_SIDED: 1 } : {},
     uniforms: { map: { value: BT }, fogC: { value: new THREE.Color(o.fog || 0) }, fogR: { value: new THREE.Vector2(o.near || 1e5, o.far || 2e5) }, tint: { value: new THREE.Color(...(o.tint || [1, 1, 1])) } },
-    vertexShader: `attribute vec4 rect; attribute vec2 luv; attribute vec3 color; varying vec4 vR; varying vec2 vL; varying vec3 vC; varying float vS; varying float vD;
+    vertexShader: `attribute vec4 rect; attribute vec2 luv; attribute vec3 color; varying vec4 vR; varying vec2 vL; varying vec3 vC; varying float vS; varying float vD; varying vec3 vN; varying vec3 vP;
       void main(){ vR = rect; vL = luv; vC = color; vec3 n = normalize(mat3(modelMatrix) * normal);
         vS = abs(n.y) > .5 ? (n.y > 0. ? 1. : .5) : (abs(n.z) > abs(n.x) ? .8 : .6);
-        vec4 mv = modelViewMatrix * vec4(position, 1.); vD = -mv.z; gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: `uniform sampler2D map; uniform vec3 fogC; uniform vec2 fogR; uniform vec3 tint; varying vec4 vR; varying vec2 vL; varying vec3 vC; varying float vS; varying float vD;
-      void main(){ vec2 full = vR.xy + vL * vR.zw, uv = vR.xy + fract(vL) * vR.zw;
+        vec4 mv = modelViewMatrix * vec4(position, 1.); vD = -mv.z; vN = normalMatrix * normal; vP = mv.xyz; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform sampler2D map; uniform vec3 fogC; uniform vec2 fogR; uniform vec3 tint; varying vec4 vR; varying vec2 vL; varying vec3 vC; varying float vS; varying float vD; varying vec3 vN; varying vec3 vP;
+      void main(){
+        #ifdef ONE_SIDED
+        if (dot(vN, -vP) <= 0.) discard;
+        #endif
+        vec2 full = vR.xy + vL * vR.zw, uv = vR.xy + fract(vL) * vR.zw;
         #if __VERSION__ >= 300
         vec4 t = textureGrad(map, uv, dFdx(full), dFdy(full));
         #else
@@ -268,7 +274,7 @@ function quadMats(o = {}) {
         vec3 c = t.rgb * vC * vS * tint; gl_FragColor = vec4(mix(c, fogC, smoothstep(fogR.x, fogR.y, vD)), ${blend ? "t.a * .85" : "1."}); }`,
     transparent: blend, depthWrite: !blend, side: THREE.DoubleSide, extensions: { derivatives: true }
   });
-  return { o: mk(false), b: mk(true) };
+  return { o: mk(false), b: mk(true), oa: mk(false, true), ba: mk(true, true) };
 }
 const AXV = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 function quadGeo(P, gname, kind, list) {
@@ -311,9 +317,9 @@ function quadGeo(P, gname, kind, list) {
 /* a group's meshes; reveal(k) shows its first k blocks (the bake records where each block's quads end, per list) */
 function quadMesh(P, gname, mats) {
   const g = new THREE.Group(), parts = [];
-  [["opaque", mats.o], ["blend", mats.b]].forEach(([kind, m]) => ["axis", "free"].forEach(list => {
+  [["opaque", mats.o, mats.oa], ["blend", mats.b, mats.ba]].forEach(([kind, m2, m1]) => ["axis", "free"].forEach(list => {
     const geo = quadGeo(P, gname, kind, list); if (!geo) return;
-    const mesh = new THREE.Mesh(geo, m); mesh.frustumCulled = false; if (kind === "blend") mesh.renderOrder = 2;
+    const mesh = new THREE.Mesh(geo, list === "axis" ? m1 : m2); mesh.frustumCulled = false; if (kind === "blend") mesh.renderOrder = 2;
     g.add(mesh); parts.push({ mesh, steps: (P.meta.groups[gname][kind].steps || {})[list] });
   }));
   const any = parts.find(p => p.steps);

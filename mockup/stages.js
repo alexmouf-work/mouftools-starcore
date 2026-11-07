@@ -435,7 +435,8 @@ function buildWorld(key, opts) {
   const motes = opts.rain
     ? new THREE.LineSegments((() => { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(N * 6), 3)); return g; })(), new THREE.LineBasicMaterial({ color: opts.mote, transparent: true, opacity: .55 }))
     : new THREE.Points(pg, new THREE.PointsMaterial({ color: opts.mote, size: opts.moteSize, transparent: true, opacity: .85, depthWrite: false }));
-  motes.frustumCulled = false; if (opts.motes !== false) scene.add(motes);
+  // Only rain. Pollen and spores were square points, and a square drifting in the air reads as a loose block (principal 2026-11-07).
+  motes.frustumCulled = false; if (opts.rain) scene.add(motes);
   const card = $(key + "-card");
   if (card) card.innerHTML = `<span class="cap-name">${opts.title}</span><p class="cap-text">${opts.text}</p>`;
   const look = new V3();

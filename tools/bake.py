@@ -13,6 +13,7 @@ Writes out_prefix.png (the sheet) and out_prefix.json: {"sheet": [W, H], "groups
 where each mesh is {"pos": [...], "uv": [...], "col": [...], "nrm": [...], "idx": [...]} (positions in blocks).
 """
 import json, math, sys, zipfile, io
+from collections import Counter
 from functools import lru_cache
 from PIL import Image
 
@@ -282,12 +283,13 @@ def bake(job, prefix):
                         continue
                     for k, tile in enumerate(tiles):
                         tid = "starcore:block/" + PLATING[fname] + _SUF[tile]; used[tid] = True
-                        lift = 0 if k == 0 else .002 * k
+                        lift = 0 if k == 0 else .004 * k   # each overlay a hair proud of the last, or they fight for the same depth
                         quad = [face_coord(face, u, v, lift) for u, v in ((0, 0), (0, 1), (1, 1), (1, 0))]
                         meshes["opaque"].append((tid, [(bx + q[0] - .5, by + q[1] - .5, bz + q[2] - .5) for q in quad],
                                                  [(0, 0), (0, 16), (16, 16), (16, 0)], n, "#ffffff"))
                 steps["opaque"].append(len(meshes["opaque"])); steps["blend"].append(len(meshes["blend"]))
                 continue
+            planes = Counter()   # faces of this block already drawn in a plane: an overlay (grass side, tinted layers) sits on top of them
             for mj in models_for(state) or ():
                 ap = json.loads(mj); m = model(ap["model"]); rx, ry = ap.get("x", 0), ap.get("y", 0)
                 for e in m["elements"] or []:
@@ -320,7 +322,12 @@ def bake(job, prefix):
                         n = DIRS[d]; n = rot(n, "x", -rx, (0, 0, 0)); n = rot(n, "y", -ry, (0, 0, 0))
                         kind = "blend" if alpha_kind(tid) == "blend" else "opaque"
                         c = ("#" + ctint[(bx, by, bz)][min(face["tintindex"], 1)] if (bx, by, bz) in ctint else tint_for(state, tints, btints, face["tintindex"])) if "tintindex" in face else "#ffffff"
-                        meshes[kind].append((tid, [(bx + p[0] / 16 - .5, by + p[1] / 16 - .5, bz + p[2] / 16 - .5) for p in quad], uvs, n, c))
+                        # ⚠️ AN OVERLAY ON THE SAME PLANE AS ITS BASE FIGHTS IT. The game draws them in order at one depth; here the
+                        # base and the overlay are merged into different rectangles, so their triangles interpolate depth differently
+                        # and flicker. Lift each further face in a plane a hair along its normal, as the plating overlays are.
+                        pk = (tuple(round(x) for x in n), round(sum(quad[0][i] * n[i] for i in range(3)) / 16, 3))
+                        lift = .004 * planes[pk]; planes[pk] += 1
+                        meshes[kind].append((tid, [(bx + p[0] / 16 - .5 + n[0] * lift, by + p[1] / 16 - .5 + n[1] * lift, bz + p[2] / 16 - .5 + n[2] * lift) for p in quad], uvs, n, c))
             steps["opaque"].append(len(meshes["opaque"])); steps["blend"].append(len(meshes["blend"]))
         out[gname] = (meshes, steps)
     # pack the sheet

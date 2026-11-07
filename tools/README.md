@@ -13,6 +13,7 @@ checkout of `alexmouf-work/starcore` (default `../starcore`, or set `STARCORE_AS
   may carry its own `[tint0, tint1]` (a block carried from its own planet). Also writes `out.quads.json` for `pack_quads.py`.
 - `pack_quads.py out.quads.json pack` — packs a bake into `pack.bin` + `pack.json`: axis-aligned quads in 24 bytes, the rest in 40.
   The page expands them and tiles merged faces with `fract()`.
+- `clean.py job_all.json` — drops loose blocks before the bake: clumps a crop window cut off (trees, floating shapes) and strays.
 - `slim.py outdir` — what ships: textures at native size, de-duplicated, lossless WebP (the page upscales them); every baked model as
   deflated quads (26/42-byte records, merged faces tiled); the galaxy's systems in the same blob. ~3 MB in place of 15.5.
 - `dump_encounters.sh -f <spec>` — builds encounters headless (two mini planets, a mini cluster, an asteroid field, Lab and Frontier

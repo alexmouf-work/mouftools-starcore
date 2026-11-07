@@ -126,6 +126,7 @@ function buildEncounters(D) {
   }
   function frame(dt, t, p) {
     R_(p, cam.position, look); cam.position.x += st.px * 8; cam.position.y += st.py * 6; cam.lookAt(look);
+    nearFar(cam, look);     // near plane pushed out with distance: the depth buffer's precision is what keeps overlays off their bases
     sky.userData.mat.uniforms.time.value = t;
     rocks.rotation.y = (RM ? 0 : t) * .01;
   }
