@@ -17,17 +17,18 @@ const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
 const OWN = new WeakSet();
 
-/* The baked sheets: every texture pre-upscaled by an integer, nearest neighbour, with extruded gutters. Sampled with hard
-   texel edges up close (nearest magnification) and trilinear + anisotropic minification far away. */
-function sheet(uri) {
-  const t = new THREE.TextureLoader().load(uri);
+/* The sheets arrive at native resolution (lossless WebP, every texture once) and are rebuilt here as the GPU wants them: each
+   texture upscaled by its whole-number factor, nearest neighbour, with extruded gutters. Sampled with hard texel edges up close
+   (nearest magnification) and trilinear + anisotropic minification far away. Planets drop their x2 on phones (canvas limits). */
+function texFrom(cv) {
+  const t = new THREE.CanvasTexture(cv);
   t.encoding = THREE.sRGBEncoding; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.LinearMipmapLinearFilter;
   t.anisotropy = MAXANI; t.generateMipmaps = true;
   return t;
 }
-const BT = sheet(ATLAS.blocks.uri), PT = sheet(ATLAS.planets.uri);
-const BR = ATLAS.blocks.rects, PR = ATLAS.planets.rects;
-const BW = ATLAS.blocks.size[0], BH = ATLAS.blocks.size[1], PW = ATLAS.planets.size[0], PH = ATLAS.planets.size[1];
+const XB = expand(ASSETS.texImg, ASSETS.J.tex, 1), XP = expand(ASSETS.planetsImg, ASSETS.J.planets, innerWidth < 720 ? 2 : 1);
+const BT = texFrom(XB.canvas), PT = texFrom(XP.canvas);
+const BR = XB.rects, PR = XP.rects, BW = XB.W, BH = XB.H, PW = XP.W, PH = XP.H;
 /* a rect (or a sub-rect in source-texture fractions) as normalised UVs, flipY-aware */
 function uvr(rects, W, H, key, sub) {
   const r = rects[key]; if (!r) throw new Error("no texture " + key);
@@ -234,34 +235,84 @@ function suitedPlayer(grade) {
   return root;
 }
 
-/* ---- baked block models: the mod's own blockstates and models, baked offline to triangles on their own sheet ---- */
-const KT = sheet(BAKED.uri);
-const KMAT = new THREE.MeshLambertMaterial({ map: KT, vertexColors: true, alphaTest: .5, side: THREE.DoubleSide });
-const KMAT_BLEND = new THREE.MeshLambertMaterial({ map: KT, vertexColors: true, transparent: true, opacity: .8, depthWrite: false, side: THREE.DoubleSide });
-function unb64(s, T) { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return new T(u.buffer); }
-function bakedGeo(name, kind) {
-  const m = BAKED.groups[name][kind]; if (!m) return null;
-  const P = unb64(m.pos, Int16Array), U = unb64(m.uv, Uint16Array), C = unb64(m.col, Uint8Array), N = unb64(m.nrm, Int8Array);
-  const pos = new Float32Array(P.length), uv = new Float32Array(U.length), col = new Float32Array(C.length), nrm = new Float32Array(N.length);
-  for (let i = 0; i < P.length; i++) pos[i] = P[i] / 64;
-  for (let i = 0; i < U.length; i++) uv[i] = U[i] / 65535;
-  for (let i = 0; i < C.length; i++) col[i] = C[i] / 255;
-  for (let i = 0; i < N.length; i++) nrm[i] = N[i];
-  const q = m.n / 4, idx = new Uint32Array(q * 6);
-  for (let i = 0; i < q; i++) { const b = i * 4, o = i * 6; idx[o] = b; idx[o + 1] = b + 1; idx[o + 2] = b + 2; idx[o + 3] = b; idx[o + 4] = b + 2; idx[o + 5] = b + 3; }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
-  g.setAttribute("color", new THREE.BufferAttribute(col, 3)); g.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
-  g.setIndex(new THREE.BufferAttribute(idx, 1)); g.computeBoundingSphere();
-  return g;
+/* ---- baked block models: the mod's own blockstates and models, baked offline and packed as quads ----
+   axis-aligned quads in 26 bytes (corner, two edge axes, size, texture, tint, uv), the rest in 42 (four corners). Coplanar faces of
+   one texture were merged at bake time, so a merged quad's uv runs past one texture and the shader tiles it with fract() (a plating
+   wall by its 3x3 period). Shading is Minecraft's own: top 1.0, north/south 0.8, east/west 0.6, bottom 0.5, times the scene's tint. */
+function quadPack(meta, bin) {
+  const rects = meta.tids.map(t => { const r = BR[t]; return [r[0] / BW, 1 - (r[1] + r[3]) / BH, r[2] / BW, r[3] / BH]; });
+  return { meta, bin, rects };
 }
-/* a group's meshes; reveal(k) shows its first k blocks (the bake records where each block's faces end) */
-function bakedMesh(name) {
-  const g = new THREE.Group(), steps = BAKED.groups[name].steps, parts = {};
-  [["opaque", KMAT], ["blend", KMAT_BLEND]].forEach(([k, mat]) => { const geo = bakedGeo(name, k); if (geo) { parts[k] = new THREE.Mesh(geo, mat); parts[k].frustumCulled = false; g.add(parts[k]); } });
-  g.userData.reveal = k => {
-    Object.entries(parts).forEach(([kind, m]) => { const n = k <= 0 ? 0 : steps[kind][Math.min(k, steps[kind].length) - 1]; m.geometry.setDrawRange(0, n * 6); });
+function quadMats(o = {}) {
+  const mk = blend => new THREE.ShaderMaterial({
+    uniforms: { map: { value: BT }, fogC: { value: new THREE.Color(o.fog || 0) }, fogR: { value: new THREE.Vector2(o.near || 1e5, o.far || 2e5) }, tint: { value: new THREE.Color(...(o.tint || [1, 1, 1])) } },
+    vertexShader: `attribute vec4 rect; attribute vec2 luv; attribute vec3 color; varying vec4 vR; varying vec2 vL; varying vec3 vC; varying float vS; varying float vD;
+      void main(){ vR = rect; vL = luv; vC = color; vec3 n = normalize(mat3(modelMatrix) * normal);
+        vS = abs(n.y) > .5 ? (n.y > 0. ? 1. : .5) : (abs(n.z) > abs(n.x) ? .8 : .6);
+        vec4 mv = modelViewMatrix * vec4(position, 1.); vD = -mv.z; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform sampler2D map; uniform vec3 fogC; uniform vec2 fogR; uniform vec3 tint; varying vec4 vR; varying vec2 vL; varying vec3 vC; varying float vS; varying float vD;
+      void main(){ vec2 full = vR.xy + vL * vR.zw, uv = vR.xy + fract(vL) * vR.zw;
+        #if __VERSION__ >= 300
+        vec4 t = textureGrad(map, uv, dFdx(full), dFdy(full));
+        #else
+        vec4 t = texture2D(map, uv);
+        #endif
+        if (t.a < ${blend ? ".02" : ".5"}) discard;
+        vec3 c = t.rgb * vC * vS * tint; gl_FragColor = vec4(mix(c, fogC, smoothstep(fogR.x, fogR.y, vD)), ${blend ? "t.a * .85" : "1."}); }`,
+    transparent: blend, depthWrite: !blend, side: THREE.DoubleSide, extensions: { derivatives: true }
+  });
+  return { o: mk(false), b: mk(true) };
+}
+const AXV = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+function quadGeo(P, gname, kind, list) {
+  const g = P.meta.groups[gname][kind]; if (!g) return null;
+  const [off, n] = g[list]; if (!n) return null;
+  const dv = new DataView(P.bin), rects = P.rects;
+  const Pp = new Float32Array(n * 12), N = new Float32Array(n * 12), C = new Float32Array(n * 12), RE = new Float32Array(n * 16), L = new Float32Array(n * 8);
+  const put = (q, cs, nx, ny, nz, tid, r, gg, b, u0, v0, u1, v1, k) => {
+    const rc = rects[tid], uv = [[u0, v0], [u0, v1], [u1, v1], [u1, v0]];
+    for (let c = 0; c < 4; c++) {
+      const o = q * 4 + c;
+      Pp[o * 3] = cs[c][0]; Pp[o * 3 + 1] = cs[c][1]; Pp[o * 3 + 2] = cs[c][2];
+      N[o * 3] = nx; N[o * 3 + 1] = ny; N[o * 3 + 2] = nz; C[o * 3] = r; C[o * 3 + 1] = gg; C[o * 3 + 2] = b;
+      RE.set(rc, o * 4); const [u, v] = uv[(c + k) % 4]; L[o * 2] = u / 16; L[o * 2 + 1] = 1 - v / 16;
+    }
   };
-  g.userData.blocks = steps.opaque.length;
+  if (list === "axis") for (let q = 0; q < n; q++) {
+    const o = off + q * 26, x = dv.getInt16(o, true) / 16, y = dv.getInt16(o + 2, true) / 16, z = dv.getInt16(o + 4, true) / 16, code = dv.getUint16(o + 6, true);
+    const w = dv.getUint16(o + 8, true) / 16, h = dv.getUint16(o + 10, true) / 16;
+    const U = AXV[code & 7], V = AXV[code >> 3 & 7], Nn = AXV[code >> 6 & 7];
+    const c1 = [x + V[0] * h, y + V[1] * h, z + V[2] * h];
+    put(q, [[x, y, z], c1, [c1[0] + U[0] * w, c1[1] + U[1] * w, c1[2] + U[2] * w], [x + U[0] * w, y + U[1] * w, z + U[2] * w]], Nn[0], Nn[1], Nn[2], dv.getUint16(o + 12, true),
+      dv.getUint8(o + 14) / 255, dv.getUint8(o + 15) / 255, dv.getUint8(o + 16) / 255,
+      dv.getInt16(o + 18, true) / 3, dv.getInt16(o + 20, true) / 3, dv.getInt16(o + 22, true) / 3, dv.getInt16(o + 24, true) / 3, code >> 9 & 3);
+  } else for (let q = 0; q < n; q++) {
+    const o = off + q * 42, cs = [];
+    for (let c = 0; c < 4; c++) cs.push([dv.getInt16(o + c * 6, true) / 64, dv.getInt16(o + c * 6 + 2, true) / 64, dv.getInt16(o + c * 6 + 4, true) / 64]);
+    put(q, cs, dv.getInt8(o + 38) / 127, dv.getInt8(o + 39) / 127, dv.getInt8(o + 40) / 127, dv.getUint16(o + 24, true),
+      dv.getUint8(o + 26) / 255, dv.getUint8(o + 27) / 255, dv.getUint8(o + 28) / 255,
+      dv.getInt16(o + 29, true) / 3, dv.getInt16(o + 31, true) / 3, dv.getInt16(o + 33, true) / 3, dv.getInt16(o + 35, true) / 3, dv.getUint8(o + 37));
+  }
+  const idx = new Uint32Array(n * 6);
+  for (let i = 0; i < n; i++) { const b = i * 4, o = i * 6; idx[o] = b; idx[o + 1] = b + 1; idx[o + 2] = b + 2; idx[o + 3] = b; idx[o + 4] = b + 2; idx[o + 5] = b + 3; }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(Pp, 3)); geo.setAttribute("normal", new THREE.BufferAttribute(N, 3));
+  geo.setAttribute("color", new THREE.BufferAttribute(C, 3)); geo.setAttribute("rect", new THREE.BufferAttribute(RE, 4)); geo.setAttribute("luv", new THREE.BufferAttribute(L, 2));
+  geo.setIndex(new THREE.BufferAttribute(idx, 1)); geo.computeBoundingSphere();
+  return geo;
+}
+/* a group's meshes; reveal(k) shows its first k blocks (the bake records where each block's quads end, per list) */
+function quadMesh(P, gname, mats) {
+  const g = new THREE.Group(), parts = [];
+  [["opaque", mats.o], ["blend", mats.b]].forEach(([kind, m]) => ["axis", "free"].forEach(list => {
+    const geo = quadGeo(P, gname, kind, list); if (!geo) return;
+    const mesh = new THREE.Mesh(geo, m); mesh.frustumCulled = false; if (kind === "blend") mesh.renderOrder = 2;
+    g.add(mesh); parts.push({ mesh, steps: (P.meta.groups[gname][kind].steps || {})[list] });
+  }));
+  const any = parts.find(p => p.steps);
+  g.userData.blocks = any ? any.steps.length : 0;
+  g.userData.reveal = k => parts.forEach(({ mesh, steps }) => { if (!steps) return; const n = k <= 0 ? 0 : steps[Math.min(k, steps.length) - 1]; mesh.geometry.setDrawRange(0, n * 6); });
   return g;
 }
+const JPACK = quadPack(ASSETS.J.pack, ASSETS.jbin), DAYMATS = quadMats();
+function bakedMesh(name, mats) { return quadMesh(JPACK, name, mats || DAYMATS); }

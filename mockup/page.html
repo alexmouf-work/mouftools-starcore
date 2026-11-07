@@ -135,7 +135,8 @@ html[data-stage="front"] .speed { opacity: 1; }
 .ver-num { font-family: var(--display); font-weight: 700; font-size: clamp(48px, 7vw, 96px); line-height: .9; color: transparent; -webkit-text-stroke: 1.2px var(--fg); letter-spacing: .02em; }
 .ver .cap-name { font-size: clamp(24px, 2.6vw, 34px); }
 #u-load { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5; font-size: 13px; color: var(--muted); pointer-events: none; transition: opacity .3s ease; }
-#u-load[hidden] { display: block; opacity: 0; }
+#u-load[hidden], #boot[hidden] { display: block; opacity: 0; }
+#boot { position: fixed; left: 50%; bottom: 18svh; transform: translateX(-50%); z-index: 5; font-size: 13px; color: var(--muted); pointer-events: none; transition: opacity .4s ease; }
 
 @media (max-width: 720px) {
   #nav { gap: 8px; }
@@ -166,6 +167,7 @@ html[data-stage="front"] .speed { opacity: 1; }
 <canvas id="gl" aria-hidden="true"></canvas>
 <div id="labels" aria-hidden="true"></div>
 <div id="fade" aria-hidden="true"></div>
+<div id="boot" role="status">Loading…</div>
 
 <nav id="nav" aria-label="Site">
   <a class="brand" href="#journey">Starcore</a>

@@ -1,90 +1,13 @@
 /* =================================== THE UPDATES TAB =================================== */
 /* Its geometry is fetched the first time the tab opens: real dumps (an Overworld patch, a mini cluster, an asteroid field, a Lab
-   station) and the sky planets PlanetFeature builds, baked from the mod's own models and packed as quads (see pack_upd.py):
-   axis-aligned quads in 24 bytes, the rest in 40. Merged faces tile their texture with fract(), so the wall of a station is a
-   handful of quads rather than thousands. Shading is Minecraft's own: top 1.0, north/south 0.8, east/west 0.6, bottom 0.5. */
+   station) and the sky planets PlanetFeature builds, baked and packed like the Journey's (see quadGeo), on the same texture sheet. */
 let UPD = null;
 function updLoad() {
-  if (!UPD) UPD = Promise.all([
-    fetch("updpack.json").then(r => { if (!r.ok) throw new Error("updpack.json " + r.status); return r.json(); }),
-    fetch("updpack.txt").then(r => { if (!r.ok) throw new Error("updpack.txt " + r.status); return r.text(); }).then(t => unb64(t.trim(), Uint8Array).buffer),
-    new Promise((res, rej) => new THREE.TextureLoader().load("upd.png", res, undefined, rej))
-  ]).then(([meta, bin, tex]) => {
-    tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.anisotropy = MAXANI; tex.generateMipmaps = true;
-    const cut = meta.cut;
-    const mat = blend => new THREE.ShaderMaterial({
-      uniforms: { map: { value: tex }, fogC: { value: new THREE.Color(0) }, fogR: { value: new THREE.Vector2(1e5, 2e5) }, bright: { value: 1 } },
-      vertexShader: `attribute vec4 rect; attribute vec2 luv; attribute vec3 color; varying vec4 vR; varying vec2 vL; varying vec3 vC; varying float vS; varying float vD;
-        void main(){ vR = rect; vL = luv; vC = color; vec3 n = normalize(mat3(modelMatrix) * normal);
-          vS = abs(n.y) > .5 ? (n.y > 0. ? 1. : .5) : (abs(n.z) > abs(n.x) ? .8 : .6);
-          vec4 mv = modelViewMatrix * vec4(position, 1.); vD = -mv.z; gl_Position = projectionMatrix * mv; }`,
-      fragmentShader: `uniform sampler2D map; uniform vec3 fogC; uniform vec2 fogR; uniform float bright; varying vec4 vR; varying vec2 vL; varying vec3 vC; varying float vS; varying float vD;
-        void main(){ vec2 full = vR.xy + vL * vR.zw, uv = vR.xy + fract(vL) * vR.zw;
-          #if __VERSION__ >= 300
-          vec4 t = textureGrad(map, uv, dFdx(full), dFdy(full));
-          #else
-          vec4 t = texture2D(map, uv);
-          #endif
-          if (t.a < ${blend ? ".02" : ".5"}) discard;
-          vec3 c = t.rgb * vC * vS * bright; gl_FragColor = vec4(mix(c, fogC, smoothstep(fogR.x, fogR.y, vD)), ${blend ? "t.a * .85" : "1."}); }`,
-      transparent: blend, depthWrite: !blend, side: THREE.DoubleSide, extensions: { derivatives: true }
-    });
-    return { meta, bin, tex, cut, OPAQUE: mat(false), BLEND: mat(true) };
-  });
+  if (!UPD) UPD = Promise.all([getOk("updates.json").then(r => r.json()), inflate("updates.txt")]).then(([meta, bin]) => quadPack(meta, bin));
   return UPD;
 }
-const AXV = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
-function updGeo(D, gname, kind) {
-  const g = D.meta.groups[gname][kind]; if (!g) return null;
-  const [ao, na] = g.axis, [fo, nf] = g.free, n = na + nf; if (!n) return null;
-  const dv = new DataView(D.bin), rects = D.meta.rects;
-  const P = new Float32Array(n * 12), N = new Float32Array(n * 12), C = new Float32Array(n * 12), RE = new Float32Array(n * 16), L = new Float32Array(n * 8);
-  const put = (q, corners, nx, ny, nz, tid, r, gg, b, u0, v0, u1, v1, k) => {
-    const rc = rects[tid], uv = [[u0, v0], [u0, v1], [u1, v1], [u1, v0]];
-    for (let c = 0; c < 4; c++) {
-      const o = (q * 4 + c);
-      P[o * 3] = corners[c][0]; P[o * 3 + 1] = corners[c][1]; P[o * 3 + 2] = corners[c][2];
-      N[o * 3] = nx; N[o * 3 + 1] = ny; N[o * 3 + 2] = nz;
-      C[o * 3] = r; C[o * 3 + 1] = gg; C[o * 3 + 2] = b;
-      RE.set(rc, o * 4);
-      const [u, v] = uv[(c + k) % 4]; L[o * 2] = u / 16; L[o * 2 + 1] = 1 - v / 16;
-    }
-  };
-  let q = 0;
-  for (let i = 0; i < na; i++, q++) {
-    const o = ao + i * 24, x = dv.getInt16(o, true) / 16, y = dv.getInt16(o + 2, true) / 16, z = dv.getInt16(o + 4, true) / 16, code = dv.getUint16(o + 6, true);
-    const w = dv.getUint16(o + 8, true) / 16, h = dv.getUint16(o + 10, true) / 16, tid = dv.getUint8(o + 12);
-    const U = AXV[code & 7], V = AXV[code >> 3 & 7], Nn = AXV[code >> 6 & 7], k = code >> 9 & 3;
-    const c0 = [x, y, z], c1 = [x + V[0] * h, y + V[1] * h, z + V[2] * h], c3 = [x + U[0] * w, y + U[1] * w, z + U[2] * w], c2 = [c1[0] + U[0] * w, c1[1] + U[1] * w, c1[2] + U[2] * w];
-    put(q, [c0, c1, c2, c3], Nn[0], Nn[1], Nn[2], tid, dv.getUint8(o + 13) / 255, dv.getUint8(o + 14) / 255, dv.getUint8(o + 15) / 255,
-      dv.getInt16(o + 16, true) / 3, dv.getInt16(o + 18, true) / 3, dv.getInt16(o + 20, true) / 3, dv.getInt16(o + 22, true) / 3, k);
-  }
-  for (let i = 0; i < nf; i++, q++) {
-    const o = fo + i * 40, cs = [];
-    for (let c = 0; c < 4; c++) cs.push([dv.getInt16(o + c * 6, true) / 64, dv.getInt16(o + c * 6 + 2, true) / 64, dv.getInt16(o + c * 6 + 4, true) / 64]);
-    const tid = dv.getUint8(o + 24);
-    put(q, cs, dv.getInt8(o + 37) / 127, dv.getInt8(o + 38) / 127, dv.getInt8(o + 39) / 127, tid, dv.getUint8(o + 25) / 255, dv.getUint8(o + 26) / 255, dv.getUint8(o + 27) / 255,
-      dv.getInt16(o + 28, true) / 3, dv.getInt16(o + 30, true) / 3, dv.getInt16(o + 32, true) / 3, dv.getInt16(o + 34, true) / 3, dv.getUint8(o + 36));
-  }
-  const idx = new Uint32Array(n * 6);
-  for (let i = 0; i < n; i++) { const b = i * 4, o = i * 6; idx[o] = b; idx[o + 1] = b + 1; idx[o + 2] = b + 2; idx[o + 3] = b; idx[o + 4] = b + 2; idx[o + 5] = b + 3; }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.BufferAttribute(P, 3)); geo.setAttribute("normal", new THREE.BufferAttribute(N, 3));
-  geo.setAttribute("color", new THREE.BufferAttribute(C, 3)); geo.setAttribute("rect", new THREE.BufferAttribute(RE, 4)); geo.setAttribute("luv", new THREE.BufferAttribute(L, 2));
-  geo.setIndex(new THREE.BufferAttribute(idx, 1)); geo.computeBoundingSphere();
-  return geo;
-}
-function updMesh(D, gname, mats) {
-  const g = new THREE.Group();
-  [["opaque", mats.o], ["blend", mats.b]].forEach(([k, m]) => { const geo = updGeo(D, gname, k); if (geo) { const mesh = new THREE.Mesh(geo, m); mesh.frustumCulled = false; if (k === "blend") mesh.renderOrder = 2; g.add(mesh); } });
-  return g;
-}
-/* each scene gets its own pair of materials, so its fog and brightness are its own */
-function updMats(D, fog, near, far, bright = 1) {
-  const o = D.OPAQUE.clone(), b = D.BLEND.clone();
-  [o, b].forEach(m => { m.uniforms.map.value = D.tex; m.uniforms.fogC.value = new THREE.Color(fog); m.uniforms.fogR.value.set(near, far); m.uniforms.bright.value = bright; });
-  return { o, b };
-}
+function updMesh(D, gname, mats) { return quadMesh(D, gname, mats); }
+function updMats(D, fog, near, far, bright = 1) { return quadMats({ fog, near, far, tint: [bright, bright, bright] }); }
 
 /* a player in ordinary clothes: no suit, no helmet (the Core Update is the Overworld) */
 function plainPlayer(shirt, trousers) {

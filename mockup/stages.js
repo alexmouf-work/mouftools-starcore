@@ -336,7 +336,7 @@ function buildSite(o = {}) {
   const hull = bakedMesh("ship"); ship.add(hull);
   // a plume in the cell beneath each Lab booster jet: the mod's flame, 8 frames at frametime 2 (10 fps)
   const plumes = [], r0 = BR.plume;
-  BAKED.jets.forEach(([x, y, z]) => [0, Math.PI / 2].forEach(rot => {
+  JETS.forEach(([x, y, z]) => [0, Math.PI / 2].forEach(rot => {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 2.6), new THREE.MeshBasicMaterial({ map: BT, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
     m.position.set(x, y - 1.8, z); m.rotation.y = rot; m.visible = false; ship.add(m); plumes.push(m);
   }));
@@ -435,7 +435,7 @@ function buildWorld(key, opts) {
   const sun = new THREE.DirectionalLight(opts.sun[0], opts.sun[1]); sun.position.set(18, 30, 10); scene.add(sun);
   if (opts.fog) scene.fog = new THREE.Fog(opts.fog, 26, 90);
   if (opts.stars) { const s = stars(2400, 300, 600, opts.stars); scene.add(s); scene.userData.sky = s; }
-  const land = bakedMesh(key); land.userData.reveal(1e9); scene.add(land);
+  const land = bakedMesh(key, quadMats({ fog: opts.fog || 0, near: opts.fog ? 26 : 1e5, far: opts.fog ? 90 : 2e5, tint: opts.tint })); scene.add(land);
   if (opts.extra) opts.extra(scene);
   // what drifts in the air: pollen and petals, spores, or acid drizzle
   const N = 900, pos = new Float32Array(N * 3), vel = new Float32Array(N * 3);
@@ -481,11 +481,12 @@ function buildHyper() {
   const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(55, 1, .05, 20000);
   const SIZE = [0.60, 2.20, 1.00, 0.40, 1.90, 1.25, 0.34, 0.28, 1.00];       // StarClass sizes, in ordinal order
   const half = c => (0.65 + 0.8 * Math.sqrt(SIZE[c])) * 0.11 * (c === 8 ? 1.5 : 1);
-  function decode(p) {
-    const xyz = unb64(p.xyz, Int16Array), col = unb64(p.col, Uint8Array), cls = unb64(p.cls, Uint8Array);
-    return { xyz, col, cls, n: cls.length };
+  const M = ASSETS.J.pack, B = ASSETS.jbin;
+  function decode(k) {
+    const [xo, xn] = M[k + "_xyz"], [co, cn] = M[k + "_col"], [lo, ln] = M[k + "_cls"];
+    return { xyz: new Int16Array(B, xo, xn / 2), col: new Uint8Array(B, co, cn), cls: new Uint8Array(B, lo, ln), n: ln };
   }
-  const T = decode(HYPER.tube), F = decode(HYPER.far);
+  const T = decode("tube"), F = decode("far");
   // shaded cube: per-vertex light and lift by face (BoxGeometry order: +x, -x, +y, -y, +z, -z)
   const box = new THREE.BoxGeometry(2, 2, 2), lightA = [], liftA = [];
   [[.78, 0], [.78, 0], [1, .28], [.45, 0], [.56, 0], [.56, 0]].forEach(([l, f]) => { for (let i = 0; i < 4; i++) { lightA.push(l); liftA.push(f); } });
@@ -681,17 +682,17 @@ function coagulus(scene, pile, pos) {
 }
 
 const WORLD_LOOK = {
-  eden: { sky: ["0a1022"], css: "radial-gradient(ellipse 120% 80% at 50% 110%, #12305a 0%, #070c1c 55%, #03050c 100%)", hemi: [0x9fb8ff, 0x1a2a2a, .62], sun: [0xc8d8ff, .55], fog: null, stars: "#eef3ff", mote: 0xfff2c0, moteSize: .14,
+  eden: { tint: [.66, .74, .95], sky: ["0a1022"], css: "radial-gradient(ellipse 120% 80% at 50% 110%, #12305a 0%, #070c1c 55%, #03050c 100%)", hemi: [0x9fb8ff, 0x1a2a2a, .62], sun: [0xc8d8ff, .55], fog: null, stars: "#eef3ff", mote: 0xfff2c0, moteSize: .14,
     extra: scene => { const a = auroraCurtains(scene, AURORA), sw = sisterWorlds(scene); scene.userData.tick = (t, dt) => { a(t); sw(dt); }; }, camY: 12, lookY: 14,
     drift: () => [(Math.random() - .5) * .6, .15 + Math.random() * .3, (Math.random() - .5) * .6], angle: .6, title: "Eden",
     text: "The rarest worlds in the galaxy. Endless forests, golden apples, and the aurora.",
     air: "Breathable", skyText: "Night, with aurora", hazards: [] },
-  rapture: { sky: ["2a0a0b"], css: "radial-gradient(ellipse at 50% 120%, #4a1012 0%, #120405 55%, #050102 100%)", hemi: [0xffb0a8, 0x3a1010, .55], sun: [0xffd0c0, .9], stars: "#ffd6d0",
+  rapture: { tint: [1, .86, .82], sky: ["2a0a0b"], css: "radial-gradient(ellipse at 50% 120%, #4a1012 0%, #120405 55%, #050102 100%)", hemi: [0xffb0a8, 0x3a1010, .55], sun: [0xffd0c0, .9], stars: "#ffd6d0",
     fog: null, mote: 0xff5a4a, moteSize: .14, drift: () => [(Math.random() - .5) * .3, .3 + Math.random() * .5, (Math.random() - .5) * .3], angle: 2.95, title: "Rapture worlds",
     extra: scene => { scene.userData.tick = coagulus(scene, COAG.pile, COAG.pos); }, focus: () => [COAG.pos[0], COAG.pos[1] + .9, COAG.pos[2]], dist: .2, camY: 5.5,
     text: "Seas of blood, giant fungi, and the Coaguli that crawl out of them.",
     air: "Breathable, and it is blood", skyText: "Starfield", hazards: ["Rapture III", "Corrosive IV", "Heat I"] },
-  hazard: { sky: ["c4a0fb"], css: "linear-gradient(#3a2a63, #c4a0fb 85%)", hemi: [0xe4d4ff, 0x4a2a3a, .65], sun: [0xffe4f0, .9], fog: 0xb08ce8, mote: 0x9be01a, moteSize: .1, rain: true,
+  hazard: { tint: [.96, .92, 1], sky: ["c4a0fb"], css: "linear-gradient(#3a2a63, #c4a0fb 85%)", hemi: [0xe4d4ff, 0x4a2a3a, .65], sun: [0xffe4f0, .9], fog: 0xb08ce8, mote: 0x9be01a, moteSize: .1, rain: true,
     drift: () => [0, -18, 0], angle: 4.0, title: "Hostile worlds",
     text: "Toxic air, acid rain, radiation. Come prepared.",
     air: "Toxic", skyText: "Fog", hazards: ["Toxic III", "Heat II", "Corrosive II", "Radiation II"] },
