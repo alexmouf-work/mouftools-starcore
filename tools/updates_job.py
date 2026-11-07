@@ -50,11 +50,11 @@ def group(name, arr, info, keep, out, air, centre, tints=None, merge=True, skip=
     print(name, len(blocks), "blocks", len(hide), "hidden cells")
     return g
 G = {}
-# ---- Core: an Overworld patch (48 x 48 out of the 64 x 64 column), cut 7 below its lowest surface
-arr, info, o = load("owground")
+# ---- Core: an Overworld patch (96 x 96 out of the 128 x 128 column), cut 7 below its lowest surface
+arr, info, o = load("ow2")
 air = is_air(info)[arr]
 top = np.where(air.any(0), arr.shape[0] - 1 - np.argmax((~air)[::-1], axis=0), 0)
-x0 = z0 = 8; N = 48
+x0 = z0 = 16; N = 96
 win = top[z0:z0 + N, x0:x0 + N]; lo = int(np.percentile(win, 5)) - 7; hi = int(win.max()) + 1
 sub = arr[lo:hi + 1, z0:z0 + N, x0:x0 + N]
 keep, out, a = visible(sub, info)

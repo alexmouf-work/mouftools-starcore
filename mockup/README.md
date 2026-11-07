@@ -1,4 +1,4 @@
-# Journey mock-up (v9)
+# Journey mock-up (v10)
 
 The site as a single page: the Journey (Earth → the pad → the solar system and the Stellate cut-away → the hyperdrive map from the
 home system → the Frontier → three surfaces → the end) and the Updates tab (1.0–1.3), with phone layouts of their own.
@@ -31,3 +31,10 @@ Before this pass the page was 10.9 MB with everything inline as base64 PNGs pre-
 - Scenes are built on first need (`lazy()` in `stages.js`), one more a frame ahead of the reader; `journey.txt` loads behind the hero.
 - Inflate uses the browser's `DecompressionStream`, or fflate from jsdelivr where that is missing.
 - `loadprobe.js <url>` times the boot under iPhone emulation with a 4x CPU throttle (1.6 s to the hero, 13 MB heap).
+
+## Scenes at 64 (v10)
+- Every world scene is a 64-block window (was 32), the geometric world a 192-block box (was 96), the Overworld patch 96 (was 48),
+  the launch site's ground 129 x 109; heights unchanged. Windows keep their old centres, so the coagulus and the golden grove stay put.
+- The hostile world is the Karst world `starcore:frontier/1_2/4` (toxic air, acid rain, radiation; dusty orange fog).
+- Dumps (128-block columns; the geometric world as a 192 x 164 x 192 box under the 8.4M cap): `bomb`, `karst`, `eden3`, `rapture2`,
+  `ow2`, `geometry2`. `job2.py` builds the job with every planet block tinted by the colour its dump recorded.

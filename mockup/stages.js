@@ -309,10 +309,10 @@ function buildSite(o = {}) {
   const inst = (geo, mat, cells) => { const im = new THREE.InstancedMesh(geo, mat, cells.length); cells.forEach(([x, y, z], i) => { m4.makeTranslation(x, y, z); im.setMatrixAt(i, m4); }); scene.add(im); return im; };
   const grass = [], dirt = [];
   const hgt = (x, z) => (Math.sin(x * .21) + Math.cos(z * .17) > 1.25 && Math.hypot(x, z) > 11) ? 1 : 0;
-  for (let x = -32; x <= 32; x++) for (let z = -20; z <= 34; z++) { const h = hgt(x, z); grass.push([x, h, z]); dirt.push([x, h - 1, z]); }
+  for (let x = -64; x <= 64; x++) for (let z = -40; z <= 68; z++) { const h = hgt(x, z); grass.push([x, h, z]); dirt.push([x, h - 1, z]); }
   inst(blockGeo(["grass_side", "grass_side", "grass_top", "dirt", "grass_side", "grass_side"]), BMAT, grass);
   inst(blockGeo(all6("dirt")), BMAT, dirt);
-  [[-22, 18], [21, 24], [26, -6]].forEach(([x, z]) => {
+  [[-22, 18], [21, 24], [26, -6], [-44, 40], [46, 52], [-52, -22], [55, -30], [8, 58], [-30, 60], [40, 10]].forEach(([x, z]) => {
     const h = hgt(x, z) + 1, logs = [], leaves = [];
     for (let y = 0; y < 5; y++) logs.push([x, h + y, z]);
     for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) for (let dy = 3; dy <= 6; dy++) { const r = Math.abs(dx) + Math.abs(dz) + (dy > 4 ? 2 : 0); if (r <= 3 && !(dx === 0 && dz === 0 && dy < 5)) leaves.push([x + dx, h + dy, z + dz]); }
@@ -424,13 +424,13 @@ function buildWorld(key, opts) {
   const sky = new THREE.Color("#" + opts.sky[0]);
   scene.add(new THREE.HemisphereLight(opts.hemi[0], opts.hemi[1], opts.hemi[2]));
   const sun = new THREE.DirectionalLight(opts.sun[0], opts.sun[1]); sun.position.set(18, 30, 10); scene.add(sun);
-  if (opts.fog) scene.fog = new THREE.Fog(opts.fog, 26, 90);
+  if (opts.fog) scene.fog = new THREE.Fog(opts.fog, 85, 250);
   if (opts.stars) { const s = stars(2400, 300, 600, opts.stars); scene.add(s); scene.userData.sky = s; }
-  const land = bakedMesh(key, quadMats({ fog: opts.fog || 0, near: opts.fog ? 26 : 1e5, far: opts.fog ? 90 : 2e5, tint: opts.tint })); scene.add(land);
+  const land = bakedMesh(key, quadMats({ fog: opts.fog || 0, near: opts.fog ? 85 : 1e5, far: opts.fog ? 250 : 2e5, tint: opts.tint })); scene.add(land);
   if (opts.extra) opts.extra(scene);
   // what drifts in the air: pollen and petals, spores, or acid drizzle
-  const N = 900, pos = new Float32Array(N * 3), vel = new Float32Array(N * 3);
-  for (let i = 0; i < N; i++) { pos[i * 3] = (Math.random() - .5) * 40; pos[i * 3 + 1] = Math.random() * 30; pos[i * 3 + 2] = (Math.random() - .5) * 40; vel.set(opts.drift(), i * 3); }
+  const N = st.narrow ? 1400 : 2400, pos = new Float32Array(N * 3), vel = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { pos[i * 3] = (Math.random() - .5) * 80; pos[i * 3 + 1] = Math.random() * 60; pos[i * 3 + 2] = (Math.random() - .5) * 80; vel.set(opts.drift(), i * 3); }
   const pg = new THREE.BufferGeometry(), pa = new THREE.BufferAttribute(pos, 3); pa.setUsage(THREE.DynamicDrawUsage); pg.setAttribute("position", pa);
   const motes = opts.rain
     ? new THREE.LineSegments((() => { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(N * 6), 3)); return g; })(), new THREE.LineBasicMaterial({ color: opts.mote, transparent: true, opacity: .55 }))
@@ -442,7 +442,7 @@ function buildWorld(key, opts) {
   const look = new V3();
   function layout() {}
   function frame(dt, t, p) {
-    const a = opts.angle + p * 1.6 + (RM ? 0 : t * .02), d = ((st.narrow ? 62 : 44) - p * 6) * (opts.dist || 1);
+    const a = opts.angle + p * 1.6 + (RM ? 0 : t * .02), d = ((st.narrow ? 112 : 80) - p * 10) * (opts.dist || 1);
     const fc = opts.focus ? opts.focus() : [0, opts.lookY == null ? 6 : opts.lookY, 0];
     cam.position.set(fc[0] + Math.cos(a) * d, (opts.camY || 16) + p * 4, fc[2] + Math.sin(a) * d);
     look.set(fc[0], fc[1], fc[2]); cam.position.x += st.px * 1.5; cam.position.y += st.py;
@@ -450,7 +450,7 @@ function buildWorld(key, opts) {
     const k = RM ? 0 : dt;
     if (opts.rain) {
       const L = motes.geometry.attributes.position.array;
-      for (let i = 0; i < N; i++) { pos[i * 3 + 1] -= 18 * k; if (pos[i * 3 + 1] < 0) pos[i * 3 + 1] = 30; L.set([pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2], pos[i * 3] + .1, pos[i * 3 + 1] + .9, pos[i * 3 + 2]], i * 6); }
+      for (let i = 0; i < N; i++) { pos[i * 3 + 1] -= 18 * k; if (pos[i * 3 + 1] < 0) pos[i * 3 + 1] = 60; L.set([pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2], pos[i * 3] + .1, pos[i * 3 + 1] + .9, pos[i * 3 + 2]], i * 6); }
       motes.geometry.attributes.position.needsUpdate = true;
     } else {
       for (let i = 0; i < N; i++) { for (let c = 0; c < 3; c++) pos[i * 3 + c] += vel[i * 3 + c] * k; if (pos[i * 3 + 1] > 30) pos[i * 3 + 1] = 0; if (pos[i * 3 + 1] < 0) pos[i * 3 + 1] = 30; }
@@ -559,7 +559,7 @@ function buildFrontier(secId, part) {
   scene.add(new THREE.AmbientLight(0x9b8ccc, .5)); scene.add(new THREE.HemisphereLight(0x2be0c8, 0x4a1f63, .35));
   const sun = new THREE.DirectionalLight(0xffd9c4, 1.2); sun.position.set(4, 3, 5); scene.add(sun);
   const Wd = [   // the order the landings come in: a hostile world, a Rapture world, Eden; the geometric world last
-    ["r_hazard", [-2.8, .7, -7], 1.25, "Hostile world", "Toxic air · Acid rain · Ringed"], ["r_rapture", [5.6, -.9, -19], 1.05, "Rapture world", "Seas of blood · Ringed"],
+    ["r_hazard", [-2.8, .7, -7], 1.25, "Hostile world", "Toxic air · Acid rain · Radiation"], ["r_rapture", [5.6, -.9, -19], 1.05, "Rapture world", "Seas of blood · Ringed"],
     ["r_eden", [-3.4, 1.1, -28], 1.3, "Eden", "Breathable · Golden groves"], ["f_ocean", [3, .3, -39], 1.25, "Ocean world", "Breathable · Ringed"],
     ["f_gasring", [-2.4, -1.3, -50], 1.6, "Gas giant", "Toxic · Ringed"], ["f_gas", [3.6, 1.1, -61], 2.1, "Gas giant", "No air"],
     ["r_geometry", [0, 0, -76], 1.1, "Geometric world", "Toxic"]
@@ -675,22 +675,22 @@ function coagulus(scene, pile, pos) {
 
 const WORLD_LOOK = {
   eden: { tint: [.66, .74, .95], sky: ["0a1022"], css: "radial-gradient(ellipse 120% 80% at 50% 110%, #12305a 0%, #070c1c 55%, #03050c 100%)", hemi: [0x9fb8ff, 0x1a2a2a, .62], sun: [0xc8d8ff, .55], fog: null, stars: "#eef3ff", mote: 0xfff2c0, moteSize: .14,
-    extra: scene => { const a = auroraCurtains(scene, AURORA), sw = sisterWorlds(scene); scene.userData.tick = (t, dt) => { a(t); sw(dt); }; }, camY: 12, lookY: 14,
+    extra: scene => { const a = auroraCurtains(scene, AURORA), sw = sisterWorlds(scene); scene.userData.tick = (t, dt) => { a(t); sw(dt); }; }, camY: 20, lookY: 14,
     drift: () => [(Math.random() - .5) * .6, .15 + Math.random() * .3, (Math.random() - .5) * .6], angle: .6, title: "Eden",
     text: "The rarest worlds in the galaxy. Endless forests, golden apples, and the aurora.",
     air: "Breathable", skyText: "Night, with aurora", hazards: [] },
   rapture: { tint: [1, .86, .82], sky: ["2a0a0b"], css: "radial-gradient(ellipse at 50% 120%, #4a1012 0%, #120405 55%, #050102 100%)", hemi: [0xffb0a8, 0x3a1010, .55], sun: [0xffd0c0, .9], stars: "#ffd6d0",
     fog: null, mote: 0xff5a4a, moteSize: .14, drift: () => [(Math.random() - .5) * .3, .3 + Math.random() * .5, (Math.random() - .5) * .3], angle: 2.95, title: "Rapture worlds",
-    extra: scene => { scene.userData.tick = coagulus(scene, COAG.pile, COAG.pos); }, focus: () => [COAG.pos[0], COAG.pos[1] + .9, COAG.pos[2]], dist: .2, camY: 5.5,
+    extra: scene => { scene.userData.tick = coagulus(scene, COAG.pile, COAG.pos); }, focus: () => [COAG.pos[0], COAG.pos[1] + .9, COAG.pos[2]], dist: .2, camY: 8,
     text: "Seas of blood, giant fungi, and the Coaguli that crawl out of them.",
     air: "Breathable, and it is blood", skyText: "Starfield", hazards: ["Rapture III", "Corrosive IV", "Heat I"] },
-  hazard: { tint: [.96, .92, 1], sky: ["c4a0fb"], css: "linear-gradient(#3a2a63, #c4a0fb 85%)", hemi: [0xe4d4ff, 0x4a2a3a, .65], sun: [0xffe4f0, .9], fog: 0xb08ce8, mote: 0x9be01a, moteSize: .1, rain: true,
+  hazard: { tint: [1, .94, .86], sky: ["e6b49a"], css: "linear-gradient(#5b3426, #e6b49a 85%)", hemi: [0xffe6d4, 0x4a3226, .65], sun: [0xfff0e0, .9], fog: 0xd8a68c, mote: 0xb8e01a, moteSize: .1, rain: true, camY: 72, lookY: 22,
     drift: () => [0, -18, 0], angle: 4.0, title: "Hostile worlds",
     text: "Toxic air, acid rain, radiation. Come prepared.",
     air: "Toxic", skyText: "Fog", hazards: ["Toxic III", "Heat II", "Corrosive II", "Radiation II"] },
   geometry: { sky: ["000000"], css: "radial-gradient(ellipse at 50% 40%, #1d0f2e 0%, #05030a 70%)", hemi: [0xf0e4ff, 0x302040, .8], sun: [0xfff0f8, .9], stars: "#f6eeff", fog: null,
-    mote: 0xe1a4fc, moteSize: .2, drift: () => [(Math.random() - .5) * .4, (Math.random() - .5) * .4, (Math.random() - .5) * .4], angle: 5.0, dist: 2.6, camY: 30, lookY: 0, noCard: true,
-    motes: false, extra: scene => { scene.background = radialSky("#05030a", .5, .4, .71, .85, [[0, "#1d0f2e"], [.7, "#05030a"]]); [[[-26, 18, 14], 7], [[30, -22, -18], 4.5]].forEach(([p, r]) => { const h = blackHole(r); h.position.set(...p); scene.add(h); }); },
+    mote: 0xe1a4fc, moteSize: .2, drift: () => [(Math.random() - .5) * .4, (Math.random() - .5) * .4, (Math.random() - .5) * .4], angle: 5.0, dist: 2.6, camY: 60, lookY: 0, noCard: true,
+    motes: false, extra: scene => { scene.background = radialSky("#05030a", .5, .4, .71, .85, [[0, "#1d0f2e"], [.7, "#05030a"]]); [[[-52, 36, 28], 10], [[60, -44, -36], 6.5]].forEach(([p, r]) => { const h = blackHole(r); h.position.set(...p); scene.add(h); }); },
     kicker: "Landing 4 of 4", title: "A geometric world",
     text: "No ground at all: cubes, tetrahedra, octahedra, spheres and tori hanging in an empty sky, of adamant and chert, iron, lapis and collapsium, with a patch of grass on one of them.",
     air: "Toxic", skyText: "Starfield", hazards: ["Heat IV", "Static III", "Radiation III", "Toxic III"] }

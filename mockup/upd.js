@@ -33,7 +33,7 @@ function plainPlayer(shirt, trousers) {
 function buildCore(D) {
   const sec = $("u-10"), scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(45, 1, .1, 1000);
   scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x5a6a4a, .85)); const sun = new THREE.DirectionalLight(0xfff3dc, .5); sun.position.set(20, 40, 10); scene.add(sun);
-  const mats = updMats(D, 0xbcd6f5, 40, 120);
+  const mats = updMats(D, 0xbcd6f5, 80, 220);
   const ground = updMesh(D, "ow", mats); scene.add(ground);
   const SP = new V3(-5, 30, 3), HP = new V3(17, 41, -16);
   const solid = updMesh(D, "sky_solid", mats); solid.position.copy(SP); scene.add(solid);
@@ -51,8 +51,8 @@ function buildCore(D) {
   function layout() {
     const f = st.narrow ? 1.5 : 1;
     R_ = rail([
-      { p: 0, pos: [42 * f, 16, 58 * f], look: [2, 22, 0] },
-      { p: .42, pos: [44 * f, 34, 30 * f], look: [SP.x + 2, SP.y, SP.z] },
+      { p: 0, pos: [64 * f, 20, 86 * f], look: [2, 20, 0] },
+      { p: .42, pos: [60 * f, 40, 44 * f], look: [SP.x + 2, SP.y, SP.z] },
       { p: .72, pos: [SP.x + 3.5 * f, SP.y + r + 2.2, SP.z + 6 * f], look: [SP.x + (st.narrow ? 0 : -1.2), SP.y + r + .6, SP.z] },
       { p: .82, pos: [SP.x + 3.5 * f, SP.y + r + 2.2, SP.z + 6 * f], look: [SP.x + (st.narrow ? 0 : -1.2), SP.y + r + .6, SP.z] },
       { p: 1, pos: [SP.x + 3.5 * f, SP.y - r - 2.4, SP.z + 6 * f], look: [SP.x + (st.narrow ? 0 : -1.2), SP.y - r - .6, SP.z] }

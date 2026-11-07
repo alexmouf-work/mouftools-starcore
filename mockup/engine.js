@@ -312,6 +312,9 @@ function quadGeo(P, gname, kind, list) {
   geo.setAttribute("position", new THREE.BufferAttribute(Pp, 3)); geo.setAttribute("normal", new THREE.BufferAttribute(N, 3));
   geo.setAttribute("color", new THREE.BufferAttribute(C, 3)); geo.setAttribute("rect", new THREE.BufferAttribute(RE, 4)); geo.setAttribute("luv", new THREE.BufferAttribute(L, 2));
   geo.setIndex(new THREE.BufferAttribute(idx, 1)); geo.computeBoundingSphere();
+  // once uploaded, the GPU holds the only copy needed: drop the JS arrays (a 64-block world is ~15 MB of them)
+  const free = function () { this.array = null; };
+  Object.values(geo.attributes).forEach(at => at.onUpload(free)); geo.index.onUpload(free);
   return geo;
 }
 /* a group's meshes; reveal(k) shows its first k blocks (the bake records where each block's quads end, per list) */

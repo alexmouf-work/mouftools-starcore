@@ -7,7 +7,7 @@ Geometry: every baked model (the Journey's worlds and ship, the Updates' scenes)
 axis records 26 bytes, the rest 42), with the hyperdrive map's systems, deflated and base64'd into .txt (the only byte-exact type served that a
 browser can fetch and DecompressionStream can inflate).
 
-Usage: slim.py <outdir>      (run in the mock-up folder after data.py, job.py and `bake.py job_all.json all`)
+Usage: slim.py <outdir>      (run in the mock-up folder after job2.py, clean.py and `bake.py job_all.json all`)
 """
 import json, sys, io, base64, zlib, hashlib, struct, os
 from PIL import Image
@@ -61,6 +61,9 @@ TEX = {"gutter": GUT["blocks"], "cells": cells, "names": names}
 # ---- planets
 bigP = b64img(ATLAS["planets"]["uri"])
 items = [(k, native(bigP, r, SPEC["planets"][k]), SPEC["planets"][k]) for k, r in sorted(ATLAS["planets"]["rects"].items(), key=lambda kv: (kv[1][1], kv[1][0]))]
+# worlds added since the planet sheet was baked, straight from their nets (native, shown x2 like the other landings)
+EXTRA = ["real_1_2_4"]
+items += [(k, Image.open(f"probe/nets/{k}_surface.png").convert("RGBA"), 2) for k in EXTRA if k not in ATLAS["planets"]["rects"]]
 sheet, cells, names, n, u = pack(items, 2048)
 print("planets", n, "->", u, sheet.size, "webp/png bytes", save(sheet, "planets"))
 PLA = {"gutter": GUT["planets"], "cells": cells, "names": names}
@@ -122,7 +125,10 @@ JM = ship("journey", ["ship", "eden", "rapture", "hazard", "geometry"], {"tube_x
 UM = ship("updates", ["ow", "sky_solid", "sky_hollow", "cluster", "asteroids", "station"])
 # the small things, as plain JSON
 D2 = {k: const("data2.js", k) for k in ("WORLDS", "COAG", "AURORA", "SISTERS")}
-J = {"tex": TEX, "planets": PLA, "PLANETS": const("data.js", "PLANETS"), "GPLANET": const("data.js", "GPLANET"),
+# the hostile world is the Karst world 1_2/4 now (principal 2026-11-07: "pick another hostile world")
+D2["WORLDS"]["hazard"] = {"stem": "real_1_2_4", "dim": "starcore:frontier/1_2/4", "air": "TOXIC", "sky": "e6b49a", "kind": "FOG"}
+PLN = const("data.js", "PLANETS"); PLN["r_hazard"] = {"stem": "real_1_2_4", "glow": "#e6b49a"}
+J = {"tex": TEX, "planets": PLA, "PLANETS": PLN, "GPLANET": const("data.js", "GPLANET"),
      "jets": const("data2.js", "BAKED")["jets"], "hyper": {"total": H["total"], "radius": H["radius"], "start": H["start"]},
      "pack": JM, **D2}
 json.dump(J, open(f"{OUT}/journey.json", "w"), separators=(",", ":"))
