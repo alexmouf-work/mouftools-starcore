@@ -106,7 +106,7 @@ function buildFrontierShow() {
 /* ---- 1.3 The Encounters Update: deep space between the planets ---- */
 function buildEncounters(D) {
   const sec = $("u-13"), scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(45, 1, .5, 6000);
-  const sky = stars(2600, 1500, 3000, "#e6ecff"); scene.add(sky);
+  const sky = stars(2600, 1500, 3000, "#e6ecff"); scene.add(sky); scene.background = new THREE.Color(0);
   const mats = updMats(D, 0x000000, 1e5, 2e5, .95);
   const CL = new V3(-170, 0, 0), STN = new V3(180, 10, -40), AST = new V3(10, 30, -300), BH = new V3(80, 90, -700);
   const cluster = updMesh(D, "cluster", mats); cluster.position.copy(CL); scene.add(cluster);
@@ -127,7 +127,6 @@ function buildEncounters(D) {
   function frame(dt, t, p) {
     R_(p, cam.position, look); cam.position.x += st.px * 8; cam.position.y += st.py * 6; cam.lookAt(look);
     sky.userData.mat.uniforms.time.value = t;
-    hole.userData.band.lookAt(cam.position); hole.userData.disk.material.uniforms.time.value = t;
     rocks.rotation.y = (RM ? 0 : t) * .01;
   }
   return { sec, scene, cam, layout, frame, sky: "hyper" };

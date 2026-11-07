@@ -1,4 +1,4 @@
-# Journey mock-up (v6)
+# Journey mock-up (v7)
 
 The site as a single page: the Journey (Earth → the pad → the solar system and the Stellate cut-away → the hyperdrive map from the
 home system → the Frontier → three surfaces → the end) and the Updates tab (1.0–1.3), with phone layouts of their own.

@@ -316,3 +316,118 @@ function quadMesh(P, gname, mats) {
 }
 const JPACK = quadPack(ASSETS.J.pack, ASSETS.jbin), DAYMATS = quadMats();
 function bakedMesh(name, mats) { return quadMesh(JPACK, name, mats || DAYMATS); }
+
+/* ---- LENS: Detailed Black Holes, ported from the mod's own post pass (shaders/post/black_hole.fsh) ----
+   A scene holding black holes renders into a buffer with depth, then one full-screen pass per hole (far first, so the nearest is
+   painted last): thin-lens point-mass bend (source radius r - thetaE^2 / r), the shadow as an antialiased mask, and the disc fitted
+   to the owner's reference (glow, dip, arc, photon ring, the near-side bar, wrapped-lattice grain in disc-local polar coordinates).
+   Radii are the game's: shadow = tan(1.22 * horizon angle), thetaE = tan(2 * horizon angle), in screen-height units; the effect
+   stops at 10 thetaE. Occlusion is the same feathered depth band around the horizon's front face. The hole has no mesh of its
+   own, as in the game with the option on: everything you see of it is this pass. */
+const LENS = (() => {
+  const mk = () => { const t = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: true }); t.texture.encoding = THREE.sRGBEncoding; return t; };
+  const A = mk(), B = mk(), C = mk();
+  A.depthTexture = new THREE.DepthTexture(1, 1); A.depthTexture.type = THREE.UnsignedIntType;
+  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), scene = new THREE.Scene();
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { InSampler: { value: null }, InDepthSampler: { value: null }, OutSize: { value: new THREE.Vector2(1, 1) }, Hole: { value: new THREE.Vector4() }, Hole2: { value: new THREE.Vector4() } },
+    vertexShader: `varying vec2 texCoord; void main(){ texCoord = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
+    fragmentShader: `uniform sampler2D InSampler; uniform sampler2D InDepthSampler; uniform vec2 OutSize; uniform vec4 Hole; uniform vec4 Hole2; varying vec2 texCoord;
+      float bhHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+      float bhNoiseWrapped(vec2 p, float period){ vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3. - 2. * f);
+        float x0 = mod(i.x, period), x1 = mod(i.x + 1., period);
+        return mix(mix(bhHash(vec2(x0, i.y)), bhHash(vec2(x1, i.y)), f.x), mix(bhHash(vec2(x0, i.y + 1.)), bhHash(vec2(x1, i.y + 1.)), f.x), f.y); }
+      float bhFbmWrapped(vec2 p, float period){ float v = 0., a = .5;
+        for (int i = 0; i < 4; i++) { v += a * bhNoiseWrapped(p, period); p = vec2(p.x * 2., p.y * 2.07); period *= 2.; a *= .5; } return v; }
+      float occlusion(float scene, float nearEdge, float farEdge){ float span = max(abs(farEdge - nearEdge), 1e-12);
+        float t = clamp((scene - nearEdge) / span, 0., 1.); return t * t * (3. - 2. * t); }
+      void main(){
+        vec4 b4 = texture2D(InSampler, texCoord); vec3 base = b4.rgb;
+        float thetaE = Hole.z;
+        float occ = occlusion(texture2D(InDepthSampler, texCoord).r, Hole2.x, Hole2.y);
+        if (thetaE <= .0001 || occ <= 0.) { gl_FragColor = vec4(base, 1.); return; }
+        float aspect = OutSize.x / OutSize.y;
+        vec2 center = vec2(Hole.x * aspect, Hole.y), here = vec2(texCoord.x * aspect, texCoord.y), offset = here - center;
+        float r = length(offset), shadow = Hole.w, veil = 1.;
+        if (r > thetaE * 10.) { gl_FragColor = vec4(base, 1.); return; }
+        float px = 1. / max(OutSize.y, 1.);
+        float shadowMask = 1. - smoothstep(shadow - px, shadow + px, r);
+        vec2 dir = offset / max(r, 1e-5);
+        float bend = (thetaE * thetaE) / max(r, 1e-4);
+        vec3 color = vec3(0.);
+        if (shadowMask < .999) {
+          vec2 sq = center + dir * (r - bend); vec2 uv = clamp(vec2(sq.x / aspect, sq.y), vec2(.001), vec2(.999));
+          color = mix(texture2D(InSampler, uv).rgb, vec3(0.), shadowMask);
+        }
+        float u = r / max(shadow, 1e-5);
+        float ang = atan(offset.y, abs(offset.y) + abs(offset.x) < 1e-7 ? 1e-7 : offset.x);
+        float haze = 1. - veil;
+        float glow = exp(-pow(max(u, 1e-6) / (3.499 * (1. + .55 * haze)), 2.697));
+        float dip = 1. - .050 * exp(-pow(max(u, 1e-6) / 1.037, 2.6));
+        float arc = exp(-pow((u - 1.484) / (.398 * (1. + 1.3 * haze)), 2.));
+        float photon = exp(-pow((u - 1.060) / (.075 * (1. + 4.5 * haze)), 2.));
+        float across = abs(offset.y) / max(shadow, 1e-5), along = abs(offset.x) / max(shadow, 1e-5);
+        float barW = (.175 + .103 * along) * (1. + 1.1 * haze);
+        float bar = exp(-pow(across / barW, 1.5)) * exp(-pow(along / 7.31, 1.35));
+        float turn = ang * .15915494;
+        float streak = bhFbmWrapped(vec2(turn * 19., u * 5.) + 11., 19.);
+        float clump = bhFbmWrapped(vec2(turn * 6., u * 1.4) + 37., 6.);
+        float grain = 1. + ((.66 + .68 * streak) * (.86 + .28 * clump) - 1.) * smoothstep(1.6, 3., u) * veil;
+        float inten = clamp(glow * dip * .795 + arc * .265 * grain + photon * .16 + bar * .323 * grain, 0., 1.);
+        vec3 discColor = mix(vec3(.74, .55, .53), vec3(.95, .93, .98), clamp(inten / .9, 0., 1.));
+        color += discColor * (inten / .9) * veil;
+        gl_FragColor = vec4(mix(base, color, occ), 1.);
+      }`,
+    depthTest: false, depthWrite: false
+  });
+  scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+  const size = new THREE.Vector2(), v = new V3(), q = new V3(), f = new V3();
+  function holesOf(s) {
+    if (!s.userData.holes) { s.userData.holes = []; s.traverse(o => o.userData && o.userData.isHole && s.userData.holes.push(o)); }
+    return s.userData.holes;
+  }
+  // depth of a point `d` along the view axis, as the (conventional) buffer stores it
+  function depthAt(c, d) { q.set(0, 0, -Math.max(d, c.near * 1.001)).applyMatrix4(c.projectionMatrix); return q.z * .5 + .5; }
+  function render(s, c) {
+    const holes = holesOf(s);
+    if (!holes.length) { R.setRenderTarget(null); R.render(s, c); return; }
+    R.getDrawingBufferSize(size);
+    c.updateMatrixWorld(); c.matrixWorldInverse.copy(c.matrixWorld).invert();
+    const tanHalfY = Math.tan(c.fov * Math.PI / 360), list = [];
+    holes.forEach(h => {
+      h.getWorldPosition(v); const dist = v.distanceTo(c.position);
+      v.applyMatrix4(c.matrixWorldInverse); if (v.z > -h.userData.r) return;          // behind or around the eye
+      const ah = Math.atan2(h.userData.r, dist), thetaE = Math.tan(Math.min(1.5, ah * 2)) / (2 * tanHalfY);
+      f.copy(v).applyMatrix4(c.projectionMatrix); const sx = f.x * .5 + .5, sy = f.y * .5 + .5;
+      const ax = (sx - .5) * size.x / size.y, ay = sy - .5, halfW = .5 * size.x / size.y;      // off screen by more than its reach: nothing to bend
+      if (Math.abs(ax) - halfW > thetaE * 10 || Math.abs(ay) - .5 > thetaE * 10) return;
+      const front = -v.z - h.userData.r, feather = h.userData.r * .35;
+      list.push({ dist, hole: [sx, sy, thetaE, Math.tan(Math.min(1.5, ah * 1.22)) / (2 * tanHalfY)], band: [depthAt(c, front - feather), depthAt(c, front + feather)] });
+    });
+    // no hole within reach of the frame: draw straight to the canvas and keep its antialiasing
+    if (!list.length) { R.setRenderTarget(null); R.render(s, c); return; }
+    list.sort((a, b) => b.dist - a.dist);
+    [A, B, C].forEach(t => { if (t.width !== size.x || t.height !== size.y) t.setSize(size.x, size.y); });
+    R.setRenderTarget(A); R.render(s, c);
+    const U = mat.uniforms; U.OutSize.value.copy(size); U.InDepthSampler.value = A.depthTexture;
+    let src = A;
+    list.forEach((it, i) => {
+      const dst = i === list.length - 1 ? null : (src === B ? C : B);
+      U.InSampler.value = src.texture; U.Hole.value.set(...it.hole); U.Hole2.value.set(it.band[0], it.band[1], 0, 1);
+      R.setRenderTarget(dst); R.render(scene, cam); src = dst;
+    });
+  }
+  return { render };
+})();
+/* a scene's own sky, drawn in WebGL so the lens bends it too (the page's CSS sky sits behind the canvas, out of the pass's reach) */
+function skyTex(draw) {
+  const cv = document.createElement("canvas"); cv.width = cv.height = 512; draw(cv.getContext("2d"), 512);
+  const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; return t;
+}
+function radialSky(base, cx, cy, rx, ry, stops) {
+  return skyTex((g, S) => {
+    g.fillStyle = base; g.fillRect(0, 0, S, S); g.save(); g.translate(cx * S, cy * S); g.scale(rx * S, ry * S);
+    const gr = g.createRadialGradient(0, 0, 0, 0, 0, 1); stops.forEach(([o, c]) => gr.addColorStop(o, c));
+    g.fillStyle = gr; g.fillRect(-3, -3, 6, 6); g.restore();
+  });
+}

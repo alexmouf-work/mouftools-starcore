@@ -20,21 +20,11 @@ function starShader(radius) {
         vec3 col = mix(vec3(.95,.38,.08), vec3(1.,.86,.5), g) * (.55 + .7 * limb) + vec3(1.,.95,.8) * pow(g, 6.) * .8; gl_FragColor = vec4(col, 1.); }` });
   return new THREE.Mesh(new THREE.SphereGeometry(radius, 64, 48), m);
 }
-/* the black hole as the mod draws one: black sphere, warm-white band 0.97-1.22 of its radius, plus an accretion glow */
+/* A black hole has no geometry here, exactly as in the game with Detailed Black Holes ON: the lens pass paints it (see LENS in
+   engine.js, a port of the mod's black_hole.fsh). This is the marker the pass looks for: its centre and its horizon radius. */
 function blackHole(rad) {
   const g = new THREE.Group();
-  g.add(new THREE.Mesh(new THREE.SphereGeometry(rad, 48, 32), new THREE.MeshBasicMaterial({ color: 0 })));
-  const band = new THREE.Mesh(new THREE.RingGeometry(rad * .97, rad * 1.22, 96), new THREE.MeshBasicMaterial({ color: 0xfff8e1, side: THREE.DoubleSide })); g.add(band);
-  const disk = new THREE.Mesh(new THREE.RingGeometry(rad * 1.5, rad * 3.4, 128, 1), new THREE.ShaderMaterial({
-    uniforms: { time: { value: 0 }, r0: { value: rad * 1.5 }, r1: { value: rad * 3.4 } }, side: THREE.DoubleSide, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    vertexShader: `varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }`,
-    fragmentShader: `uniform float time; uniform float r0; uniform float r1; varying vec2 vP;
-      void main(){ float r = length(vP), a = atan(vP.y, vP.x); float t = (r - r0) / (r1 - r0);
-        float sw = .5 + .5 * sin(a * 6. - time * 1.8 + r * 3.) * sin(a * 3. + time * .9 - r * 1.7);
-        float fall = pow(1. - t, 1.6) * smoothstep(0., .08, t); vec3 col = mix(vec3(1.,.55,.18), vec3(1.,.95,.85), pow(1.-t, 3.));
-        gl_FragColor = vec4(col * (.5 + .8 * sw) * fall, fall); }` }));
-  disk.rotation.x = -Math.PI / 2 + .3; g.add(disk);
-  g.userData = { band, disk, pick: [g.children[0]], body: new THREE.Group(), data: {} };
+  g.userData = { isHole: true, r: rad, pick: [], body: new THREE.Group(), data: {} };
   return g;
 }
 
@@ -42,6 +32,8 @@ function blackHole(rad) {
 function buildSystem() {
   const sec = $("system"), secA = $("earth");
   const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(40, 1, .1, 4000), camA = new THREE.PerspectiveCamera(40, 1, .1, 4000);
+  // the page's system sky, drawn here so Hawking's Terminus bends it: radial-gradient(ellipse 70% 60% at 72% 38%, #12215f, transparent 70%), #05060f
+  scene.background = radialSky("#05060f", .72, .38, .7, .6, [[0, "#12215f"], [.7, "rgba(18,33,95,0)"]]);
   scene.add(new THREE.AmbientLight(0x6f86c9, .42));
   const sunLight = new THREE.PointLight(0xfff1dc, 1.35, 0); scene.add(sunLight);
   const sky = stars(3000, 600, 1200, "#cfe0ff"); scene.add(sky);
@@ -226,7 +218,6 @@ function buildSystem() {
     sky.userData.mat.uniforms.time.value = t; sun.material.uniforms.time.value = RM ? 0 : t; dm.uniforms.time.value = t;
     Object.values(B).forEach(b => { if (b.key) spinPlanet(b.g, a, .08); });
     B.luneus.g.position.set(OW.x + Math.cos(t * .25) * 3.2, OW.y + .4, OW.z + Math.sin(t * .25) * 3.2);
-    B.terminus.g.userData.band.lookAt(c.position); B.terminus.g.userData.disk.material.uniforms.time.value = t;
     let pull = 0;
     if (st.active && dust > .5) { tmp.set(ndc.x, ndc.y, .5).unproject(c); dir.copy(tmp).sub(c.position).normalize(); Wc.copy(c.position).addScaledVector(dir, (OW.z - c.position.z) / dir.z); pull = 1; }
     dm.uniforms.fade.value = dust;
@@ -444,7 +435,7 @@ function buildWorld(key, opts) {
   const motes = opts.rain
     ? new THREE.LineSegments((() => { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(N * 6), 3)); return g; })(), new THREE.LineBasicMaterial({ color: opts.mote, transparent: true, opacity: .55 }))
     : new THREE.Points(pg, new THREE.PointsMaterial({ color: opts.mote, size: opts.moteSize, transparent: true, opacity: .85, depthWrite: false }));
-  motes.frustumCulled = false; scene.add(motes);
+  motes.frustumCulled = false; if (opts.motes !== false) scene.add(motes);
   const card = $(key + "-card");
   if (card) card.innerHTML = `<span class="cap-name">${opts.title}</span><p class="cap-text">${opts.text}</p>`;
   const look = new V3();
@@ -698,17 +689,7 @@ const WORLD_LOOK = {
     air: "Toxic", skyText: "Fog", hazards: ["Toxic III", "Heat II", "Corrosive II", "Radiation II"] },
   geometry: { sky: ["000000"], css: "radial-gradient(ellipse at 50% 40%, #1d0f2e 0%, #05030a 70%)", hemi: [0xf0e4ff, 0x302040, .8], sun: [0xfff0f8, .9], stars: "#f6eeff", fog: null,
     mote: 0xe1a4fc, moteSize: .2, drift: () => [(Math.random() - .5) * .4, (Math.random() - .5) * .4, (Math.random() - .5) * .4], angle: 5.0, dist: 2.6, camY: 30, lookY: 0, noCard: true,
-    extra: scene => {
-      const holes = [[[-26, 18, 14], 7], [[30, -22, -18], 4.5]].map(([pos, r]) => {
-        const g = new THREE.Group(); g.position.set(...pos); scene.add(g);
-        g.add(new THREE.Mesh(new THREE.SphereGeometry(r, 48, 32), new THREE.MeshBasicMaterial({ color: 0 })));
-        const band = new THREE.Mesh(new THREE.RingGeometry(r * .97, r * 1.22, 96), new THREE.MeshBasicMaterial({ color: 0xfff8e1, side: THREE.DoubleSide })); g.add(band);
-        const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: ROUNDGLOW, color: 0xfff1d0, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: .35 }));
-        halo.scale.setScalar(r * 4.2); g.add(halo);
-        return band;
-      });
-      scene.userData.tick = () => holes.forEach(b => scene.userData.cam && b.lookAt(scene.userData.cam.position));
-    },
+    motes: false, extra: scene => { scene.background = radialSky("#05030a", .5, .4, .71, .85, [[0, "#1d0f2e"], [.7, "#05030a"]]); [[[-26, 18, 14], 7], [[30, -22, -18], 4.5]].forEach(([p, r]) => { const h = blackHole(r); h.position.set(...p); scene.add(h); }); },
     kicker: "Landing 4 of 4", title: "A geometric world",
     text: "No ground at all: cubes, tetrahedra, octahedra, spheres and tori hanging in an empty sky, of adamant and chert, iron, lapis and collapsium, with a patch of grass on one of them.",
     air: "Toxic", skyText: "Starfield", hazards: ["Heat IV", "Static III", "Radiation III", "Toxic III"] }
@@ -806,6 +787,6 @@ function loop() {
   st.px += (tx - st.px) * (RM ? 0 : 1 - Math.exp(-dt * 3)); st.py += (ty - st.py) * (RM ? 0 : 1 - Math.exp(-dt * 3));
   const s = stages[k];
   s.frame(dt, T, sp.get(s));
-  R.render(s.scene, s.cam);
+  LENS.render(s.scene, s.cam);
 }
 loop();
