@@ -1,5 +1,7 @@
 """The favicon: one black hole as the mod's Detailed Black Holes pass draws it (shaders/post/black_hole.fsh, the same port the site runs),
-over a lensed starfield. Rendered at 1024 and filtered down, so every size is a reduction of a sharp picture, never an upscale.
+on a transparent background: the disc is light on black, so black is keyed out (opacity = brightness, colour un-premultiplied) and
+the horizon's shadow is kept solid. Rendered at 1024 and filtered down with premultiplied alpha, so every size is a reduction of a
+sharp picture, never an upscale, and its soft edges carry no dark fringe.
 Usage: favicon.py outdir"""
 import sys, os, numpy as np
 from PIL import Image
@@ -28,7 +30,7 @@ px = np.clip(((sx - .5) * .5 + .5) * B, 0, B - 1).astype(int); py = np.clip((1 -
 bent = sky[py, px]
 pxw = 1 / S
 mask = 1 - np.clip((r - (shadow - pxw)) / (2 * pxw), 0, 1); mask = mask * mask * (3 - 2 * mask)
-color = bent * (1 - mask)[..., None]
+color = np.zeros((S, S, 3), np.float32)     # no sky: nothing behind the hole to bend
 # the disc, term for term as the shader (veil 1, no haze)
 U = r / shadow
 ang = np.arctan2(oy, ox)
@@ -57,9 +59,20 @@ inten = np.clip(glow * dip * .795 + arc * .265 * grain + photon * .16 + bar * .3
 k = np.clip(inten / .9, 0, 1)[..., None]
 disc = np.array([.74, .55, .53]) * (1 - k) + np.array([.95, .93, .98]) * k
 color = color + disc * (inten / .9)[..., None]
-img = Image.fromarray((np.clip(color, 0, 1) * 255 + .5).astype(np.uint8), "RGB")
+color = np.clip(color, 0, 1)
+def smooth(e0, e1, x): t = np.clip((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t)
+# keyed light: opaque as it is bright, faded out in a circle before the frame's edge so the broad wash never draws a square
+la = np.clip(color.max(axis=2), 0, 1) * smooth(.49, .36, r)
+lc = np.where(la[..., None] > 1e-4, color / np.maximum(color.max(axis=2), 1e-4)[..., None], 0)
+# under it, a soft disc of the site's deep-space colour about twice the shadow: unseen on a dark tab, and on a light one it is what
+# keeps a white ring from vanishing into a white tab. The horizon itself stays solid.
+ua = np.maximum(.92 * smooth(2.5, 1.7, U), mask); uc = np.array([5, 6, 15], np.float32) / 255
+alpha = la + ua * (1 - la)
+rgb = (lc * la[..., None] + uc * (ua * (1 - la))[..., None]) / np.maximum(alpha, 1e-4)[..., None]
+img = Image.fromarray((np.dstack([np.clip(rgb, 0, 1), alpha]) * 255 + .5).astype(np.uint8), "RGBA")
+def down(s): return img.convert("RGBa").resize((s, s), Image.LANCZOS).convert("RGBA")
 img.save(f"{OUT}/icon-1024.png")
 for n, s in (("icon-512.png", 512), ("icon-192.png", 192), ("apple-touch-icon.png", 180), ("favicon-32.png", 32), ("favicon-16.png", 16)):
-    img.resize((s, s), Image.LANCZOS).save(f"{OUT}/{n}", optimize=True)
-img.resize((256, 256), Image.LANCZOS).save(f"{OUT}/favicon.ico", sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    down(s).save(f"{OUT}/{n}", optimize=True)
+down(256).save(f"{OUT}/favicon.ico", sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 print({f: os.path.getsize(f"{OUT}/{f}") for f in sorted(os.listdir(OUT))})
