@@ -1,4 +1,4 @@
-# Journey mock-up (v7)
+# Journey mock-up (v8)
 
 The site as a single page: the Journey (Earth → the pad → the solar system and the Stellate cut-away → the hyperdrive map from the
 home system → the Frontier → three surfaces → the end) and the Updates tab (1.0–1.3), with phone layouts of their own.
@@ -23,3 +23,11 @@ Before this pass the page was 10.9 MB with everything inline as base64 PNGs pre-
 - Data is generated, not committed (it embeds the game's art): `specs.py`/`data.py` → sheets, `job.py` + `../tools/updates_job.py` →
   `job_all.json`, `../tools/bake.py job_all.json all`, then `../tools/slim.py site-data`. See `../tools/README.md`.
 - `shot7.js outdir desk|phone prefix journey|updates id:frac,...` — Playwright screenshots through a local `python3 -m http.server 8765`.
+
+## Phones (v8)
+- Phones expand block textures x2 (a 4096 x 1024 sheet) and planets x1; desktop keeps x8 and x2. A 4096-square canvas plus its GPU
+  copy and mips is more than a phone browser comfortably gives a page; that was the "takes ages, if it loads at all".
+- Each sheet's canvas is shrunk to 1 px once the GPU has it, so only one copy is held.
+- Scenes are built on first need (`lazy()` in `stages.js`), one more a frame ahead of the reader; `journey.txt` loads behind the hero.
+- Inflate uses the browser's `DecompressionStream`, or fflate from jsdelivr where that is missing.
+- `loadprobe.js <url>` times the boot under iPhone emulation with a 4x CPU throttle (1.6 s to the hero, 13 MB heap).

@@ -22,11 +22,18 @@ const OWN = new WeakSet();
    (nearest magnification) and trilinear + anisotropic minification far away. Planets drop their x2 on phones (canvas limits). */
 function texFrom(cv) {
   const t = new THREE.CanvasTexture(cv);
+  // once the GPU has it, the canvas is dead weight (64 MB at 4096 square): shrink it to nothing so the page holds one copy
+  t.onUpdate = () => { cv.width = cv.height = 1; t.onUpdate = null; };
   t.encoding = THREE.sRGBEncoding; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.LinearMipmapLinearFilter;
   t.anisotropy = MAXANI; t.generateMipmaps = true;
   return t;
 }
-const XB = expand(ASSETS.texImg, ASSETS.J.tex, 1), XP = expand(ASSETS.planetsImg, ASSETS.J.planets, innerWidth < 720 ? 2 : 1);
+// Phones get x2 blocks (a 4096 x 1024 sheet) and x1 planets: x8 blocks is a 4096-square canvas plus its GPU copy and mips, more than
+// a phone browser gives a page comfortably, and on a phone's small, dense screen it is not a difference anyone can see.
+const PHONE = Math.min(screen.width, screen.height) < 760 || innerWidth < 720;
+const BDIV = PHONE ? 4 : 1, BSC = Math.max(1, 8 / BDIV);
+const XB = expand(ASSETS.texImg, ASSETS.J.tex, BDIV), XP = expand(ASSETS.planetsImg, ASSETS.J.planets, PHONE ? 2 : 1);
+performance.mark("expanded");
 const BT = texFrom(XB.canvas), PT = texFrom(XP.canvas);
 const BR = XB.rects, PR = XP.rects, BW = XB.W, BH = XB.H, PW = XP.W, PH = XP.H;
 /* a rect (or a sub-rect in source-texture fractions) as normalised UVs, flipY-aware */
@@ -190,7 +197,7 @@ function boxUV(w, h, d, u, v, key, grow = 0) {
     if (nz > .5) { px = u + d + f(x, w); py = v + d + f(-y, h); } else if (nx > .5) { px = u + d + w + f(-z, d); py = v + d + f(-y, h); }
     else if (nz < -.5) { px = u + 2 * d + w + f(-x, w); py = v + d + f(-y, h); } else if (nx < -.5) { px = u + f(z, d); py = v + d + f(-y, h); }
     else if (ny > .5) { px = u + d + f(x, w); py = v + f(z, d); } else { px = u + d + w + f(x, w); py = v + f(-z, d); }
-    U.setXY(i, (r[0] + px * 8) / BW, 1 - (r[1] + py * 8) / BH);
+    U.setXY(i, (r[0] + px * BSC) / BW, 1 - (r[1] + py * BSC) / BH);
   }
   return g;
 }
@@ -314,7 +321,10 @@ function quadMesh(P, gname, mats) {
   g.userData.reveal = k => parts.forEach(({ mesh, steps }) => { if (!steps) return; const n = k <= 0 ? 0 : steps[Math.min(k, steps.length) - 1]; mesh.geometry.setDrawRange(0, n * 6); });
   return g;
 }
-const JPACK = quadPack(ASSETS.J.pack, ASSETS.jbin), DAYMATS = quadMats();
+// journey.txt arrives after the page is up; the scenes that draw baked models wait for it (lazy() in the conductor)
+let JPACK = null, JBIN = null;
+ASSETS.jbinP.then(b => { JBIN = b; JPACK = quadPack(ASSETS.J.pack, b); }).catch(err => { console.error(err); document.getElementById("boot").hidden = false; document.getElementById("boot").textContent = "Some scenes could not load."; });
+const DAYMATS = quadMats();
 function bakedMesh(name, mats) { return quadMesh(JPACK, name, mats || DAYMATS); }
 
 /* ---- LENS: Detailed Black Holes, ported from the mod's own post pass (shaders/post/black_hole.fsh) ----

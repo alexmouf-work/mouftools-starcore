@@ -293,7 +293,7 @@ function buildSystem() {
   function hide() { labelsEl.querySelectorAll(".plabel").forEach(e => e.style.opacity = 0); }
   function show(v) { if (!v) hide(); }
   return {
-    earth: { sec: secA, scene, cam: camA, layout() {}, frame: frameA, show, sky: "" },
+    earth: { sec: secA, scene, cam: camA, layout, frame: frameA, show, sky: "" },
     system: { sec, scene, cam, layout, frame, show, sky: "" }
   };
 }
@@ -333,8 +333,8 @@ function buildSite(o = {}) {
   }));
   const plumeY = plumes.map(m => m.position.y);
   function plumeFrame(f) {
-    const fy = r0[1] + f * 128;
-    plumes.forEach(m => { const U = m.geometry.attributes.uv; const u0 = r0[0] / BW, u1 = (r0[0] + 128) / BW, v1 = 1 - fy / BH, v0 = 1 - (fy + 128) / BH;
+    const fs = r0[2], fy = r0[1] + f * fs;     // square frames down the strip, at whatever scale this device's sheet uses
+    plumes.forEach(m => { const U = m.geometry.attributes.uv; const u0 = r0[0] / BW, u1 = (r0[0] + fs) / BW, v1 = 1 - fy / BH, v0 = 1 - (fy + fs) / BH;
       U.setXY(0, u0, v1); U.setXY(1, u0, v0); U.setXY(2, u1, v1); U.setXY(3, u1, v0); U.needsUpdate = true; });
   }
   // power and fuel: Lab solar panels (3x3 deck, + west, − east, post, cell array) and a bank of Lab fluid tanks with fuel windows
@@ -472,7 +472,7 @@ function buildHyper() {
   const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(55, 1, .05, 20000);
   const SIZE = [0.60, 2.20, 1.00, 0.40, 1.90, 1.25, 0.34, 0.28, 1.00];       // StarClass sizes, in ordinal order
   const half = c => (0.65 + 0.8 * Math.sqrt(SIZE[c])) * 0.11 * (c === 8 ? 1.5 : 1);
-  const M = ASSETS.J.pack, B = ASSETS.jbin;
+  const M = ASSETS.J.pack, B = JBIN;
   function decode(k) {
     const [xo, xn] = M[k + "_xyz"], [co, cn] = M[k + "_col"], [lo, ln] = M[k + "_cls"];
     return { xyz: new Int16Array(B, xo, xn / 2), col: new Uint8Array(B, co, cn), cls: new Uint8Array(B, lo, ln), n: ln };
@@ -694,12 +694,28 @@ const WORLD_LOOK = {
     text: "No ground at all: cubes, tetrahedra, octahedra, spheres and tori hanging in an empty sky, of adamant and chert, iron, lapis and collapsium, with a patch of grass on one of them.",
     air: "Toxic", skyText: "Starfield", hazards: ["Heat IV", "Static III", "Radiation III", "Toxic III"] }
 };
-/* the Journey: Earth → the pad → the system → the hyperdrive map → the Frontier → three surfaces → the end */
-const SYS = buildSystem();
+/* the Journey: Earth → the pad → the system → the hyperdrive map → the Frontier → three surfaces → the end.
+   Every scene is built when it is first needed (or a moment before, in a spare frame), never all at boot: a phone pays only for the
+   opening shot before the page can be scrolled. Scenes that draw baked models also wait for journey.txt, which loads behind the hero. */
+let SYS = null;
+const sysOf = () => SYS || (SYS = buildSystem());
+function lazy(id, sky, make, needsPack) {
+  const w = { sec: $(id), sky, s: null };
+  w.ready = () => {
+    if (w.s) return true;
+    if (needsPack && !JPACK) return false;
+    w.s = make(); w.s.cam.aspect = innerWidth / innerHeight; w.s.cam.updateProjectionMatrix(); w.s.layout();
+    return true;
+  };
+  w.show = v => w.s && w.s.show && w.s.show(v);
+  return w;
+}
 const VIEWS = {
   journey: {
-    stages: [SYS.earth, buildSite(), SYS.system, buildHyper(), buildFrontier("frontier", "a"), buildWorld("hazard", WORLD_LOOK.hazard),
-      buildWorld("rapture", WORLD_LOOK.rapture), buildWorld("eden", WORLD_LOOK.eden), buildWorld("geometry", WORLD_LOOK.geometry)],
+    stages: [lazy("earth", "", () => sysOf().earth), lazy("site", "site", () => buildSite(), true), lazy("system", "", () => sysOf().system),
+      lazy("hyper", "hyper", () => buildHyper(), true), lazy("frontier", "front", () => buildFrontier("frontier", "a")),
+      lazy("w-hazard", "world", () => buildWorld("hazard", WORLD_LOOK.hazard), true), lazy("w-rapture", "world", () => buildWorld("rapture", WORLD_LOOK.rapture), true),
+      lazy("w-eden", "world", () => buildWorld("eden", WORLD_LOOK.eden), true), lazy("w-geometry", "world", () => buildWorld("geometry", WORLD_LOOK.geometry), true)],
     names: ["sys", "site", "sys", "hyper", "front", "world", "world", "world", "world"],
     // the colour each hand-over passes through: into Earth's face is into its sky; space to space is black; a jump is a flash
     fade: [null, "#dbeaff", "#000", "#000", "#e9f3ff", "#e9f3ff", "#e9f3ff", "#e9f3ff", "#e9f3ff"],
@@ -713,7 +729,7 @@ const fadeEl = $("fade"), skyEl = $("sky"), loadEl = $("u-load");
 function resize() {
   st.narrow = innerWidth < 720;
   R.setPixelRatio(Math.min(window.devicePixelRatio || 1, st.narrow ? 1.5 : 2)); R.setSize(innerWidth, innerHeight, false);
-  VIEWS[view].stages.forEach(s => { s.cam.aspect = innerWidth / innerHeight; s.cam.updateProjectionMatrix(); s.layout(); });
+  VIEWS[view].stages.forEach(w => { if (!w.s) return; w.s.cam.aspect = innerWidth / innerHeight; w.s.cam.updateProjectionMatrix(); w.s.layout(); });
 }
 addEventListener("resize", resize);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(resize);
@@ -727,7 +743,8 @@ function ensureUpdates() {
   if (U.ready || U.loading) return;
   U.loading = true; loadEl.hidden = false; loadEl.textContent = "Loading…";
   updLoad().then(D => {
-    U.stages = [buildCore(D), buildSite({ sec: "u-11", industry: true }), buildFrontierShow(), buildEncounters(D)];
+    U.stages = [lazy("u-10", "site", () => buildCore(D)), lazy("u-11", "site", () => buildSite({ sec: "u-11", industry: true })),
+      lazy("u-12", "front", () => buildFrontierShow()), lazy("u-13", "hyper", () => buildEncounters(D))];
     U.names = ["site", "site", "front", "hyper"]; U.fade = [null, "#000", "#000", "#000"];
     U.ready = true; loadEl.hidden = true;
     if (view === "updates") { cur = -1; resize(); }
@@ -761,19 +778,21 @@ function loop() {
   if (document.hidden) return;
   const dt = Math.min(clock.getDelta(), 1 / 20); T += dt;
   const V = VIEWS[view], stages = V.stages;
-  if (!stages.length) { R.clear(); return; }
+  if (!stages.length) { R.setRenderTarget(null); R.clear(); return; }
   const mid = scrollY + innerHeight * .5;
-  let k = 0; stages.forEach((s, i) => { if (s.sec.offsetTop <= mid) k = i; });
-  stages.forEach(s => {
-    const raw = clamp((scrollY - s.sec.offsetTop) / Math.max(1, s.sec.offsetHeight - innerHeight));
-    const v = sp.has(s) ? sp.get(s) : raw;
-    sp.set(s, v + (raw - v) * (RM ? 1 : 1 - Math.exp(-dt * 5)));
+  let k = 0; stages.forEach((w, i) => { if (w.sec.offsetTop <= mid) k = i; });
+  stages.forEach(w => {
+    const raw = clamp((scrollY - w.sec.offsetTop) / Math.max(1, w.sec.offsetHeight - innerHeight));
+    const v = sp.has(w) ? sp.get(w) : raw;
+    sp.set(w, v + (raw - v) * (RM ? 1 : 1 - Math.exp(-dt * 5)));
   });
-  if (k !== cur) {
-    stages.forEach((s, i) => s.show && i !== k && s.show(false));
+  const w = stages[k], ok = w.ready();
+  if (k !== cur || (ok && w.shown !== true)) {
+    stages.forEach((o, i) => i !== k && o.show(false) && 0);
+    stages.forEach((o, i) => { if (i !== k) o.shown = false; });
     cur = k; HTML.dataset.stage = V.names[k];
-    skyEl.className = stages[k].sky === "world" ? "" : stages[k].sky || "";
-    stages[k].show && stages[k].show(true);
+    skyEl.className = w.sky === "world" ? "" : w.sky || "";
+    if (ok) { w.show(true); w.shown = true; }
   }
   const vh = innerHeight; let fade = 0, col = "#000";
   for (let i = 1; i < stages.length; i++) {
@@ -785,8 +804,9 @@ function loop() {
   fadeEl.style.opacity = (col === "#000" ? fade : fade * .92).toFixed(3);
   const tx = st.active ? ndc.x : 0, ty = st.active ? ndc.y : 0;
   st.px += (tx - st.px) * (RM ? 0 : 1 - Math.exp(-dt * 3)); st.py += (ty - st.py) * (RM ? 0 : 1 - Math.exp(-dt * 3));
-  const s = stages[k];
-  s.frame(dt, T, sp.get(s));
-  LENS.render(s.scene, s.cam);
+  if (ok) { w.s.frame(dt, T, sp.get(w)); LENS.render(w.s.scene, w.s.cam); }
+  else { R.setRenderTarget(null); R.clear(); }
+  // one scene a frame, ahead of the reader: the next two are built before they are scrolled to
+  if (ok) for (const j of [k + 1, k + 2, k - 1]) { const n = stages[j]; if (n && !n.s && n.ready()) break; }
 }
 loop();

@@ -6,11 +6,20 @@ function loadImg(src) {
   return new Promise((res, rej) => { const i = new Image(); i.decoding = "async"; i.onload = () => res(i); i.onerror = () => rej(new Error(src)); i.src = src; });
 }
 function getOk(url) { return fetch(url).then(r => { if (!r.ok) throw new Error(url + " " + r.status); return r; }); }
-// base64 text of a zlib stream (the only byte-exact type the host serves that fetch can read), inflated by the browser itself
+// base64 text of a zlib stream (the only byte-exact type the host serves that fetch can read), inflated by the browser itself where it
+// can (DecompressionStream: Safari 16.4+, Chrome 80+), or by fflate (9 KB, loaded only then) where it cannot
+function b64bytes(t) { const s = atob(t.trim()), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+let FFLATE = null;
+function fflate() {
+  return FFLATE || (FFLATE = new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js";
+    s.onload = () => res(window.fflate); s.onerror = () => rej(new Error("fflate")); document.head.appendChild(s); }));
+}
 async function inflate(url) {
-  const t = (await (await getOk(url)).text()).trim(), s = atob(t), u = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
-  return new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer();
+  const u = b64bytes(await (await getOk(url)).text());
+  if (typeof DecompressionStream === "function") {
+    try { return await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer(); } catch (e) { console.warn(e); }
+  }
+  const f = await fflate(); const out = f.unzlibSync(u); return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
 }
 /* a native sheet rebuilt for the GPU: each cell upscaled by its factor (divided by div, never below 1), extruded gutters, shelf-packed
    into a power-of-two canvas. Returns the canvas and every texture's rect in it, by name. */
@@ -36,6 +45,9 @@ function expand(img, spec, div) {
   return { canvas: cv, rects, W, H };
 }
 const bootEl = document.getElementById("boot");
-Promise.all([loadImg("tex.webp"), loadImg("planets.webp"), getOk("journey.json").then(r => r.json()), inflate("journey.txt")])
-  .then(([texImg, planetsImg, J, jbin]) => { start({ texImg, planetsImg, J, jbin }); bootEl.hidden = true; })
+performance.mark("boot");
+// the hero needs the sheets and the small JSON; the models (journey.txt) keep loading behind it
+const jbinP = inflate("journey.txt");
+Promise.all([loadImg("tex.webp"), loadImg("planets.webp"), getOk("journey.json").then(r => r.json())])
+  .then(([texImg, planetsImg, J]) => { performance.mark("fetched"); start({ texImg, planetsImg, J, jbinP }); performance.mark("started"); bootEl.hidden = true; })
   .catch(err => { bootEl.textContent = "This page could not load its scenes."; console.error(err); });
