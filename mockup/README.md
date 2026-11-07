@@ -38,3 +38,7 @@ Before this pass the page was 10.9 MB with everything inline as base64 PNGs pre-
 - The hostile world is the Karst world `starcore:frontier/1_2/4` (toxic air, acid rain, radiation; dusty orange fog).
 - Dumps (128-block columns; the geometric world as a 192 x 164 x 192 box under the 8.4M cap): `bomb`, `karst`, `eden3`, `rapture2`,
   `ow2`, `geometry2`. `job2.py` builds the job with every planet block tinted by the colour its dump recorded.
+
+## Deploying (Vercel, starcore.mouftools.com)
+`build.sh`, then `deploy.sh`, then commit `public/`. `vercel.json` at the repo root tells Vercel there is no build and to serve
+`public/` as it stands; a push to main redeploys. Data files are cached for an hour (stale-while-revalidate a day), the page never.
