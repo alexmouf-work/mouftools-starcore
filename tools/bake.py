@@ -82,6 +82,12 @@ def models_for(state):
 TEX = {}      # id -> PIL image (first frame, unscaled)
 def texture(tid):
     if tid in TEX: return TEX[tid]
+    if tid.startswith("C3:"):
+        # a plating wall's nine p-tiles as one 3x3 picture: tile (pu, pv) at column pu, row pv, so fract(world / 3) lands on the right one
+        base = tid[3:]; im = Image.new("RGBA", (48, 48))
+        for pu in range(3):
+            for pv in range(3): im.paste(texture(f"starcore:block/{base}wall_p{pu}{pv}"), (pu * 16, pv * 16))
+        TEX[tid] = im; return im
     ns, path = split_id(tid)
     raw = read(ns, f"textures/{path}.png")
     im = Image.open(io.BytesIO(raw)).convert("RGBA") if raw else Image.new("RGBA", (16, 16), (255, 0, 255, 255))
@@ -183,6 +189,38 @@ def rot(p, axis, deg, origin):
     else: x, y = x * c - y * s, x * s + y * c
     return (x + origin[0], y + origin[1], z + origin[2])
 
+def merge(quads):
+    """Greedy-merge coplanar full unit faces of one texture, colour and facing into rectangles. A merged quad's uv runs past 16
+    (w*16 by h*16): the page tiles it with fract(), so a 90-block wall is one quad instead of 8,100."""
+    keep, cells = [], {}
+    for q in quads:
+        tid, quad, uvs, n, c = q
+        if uvs != [(0, 0), (0, 16), (16, 16), (16, 0)]: keep.append(q); continue
+        p0, p1, p3 = quad[0], quad[1], quad[3]
+        ua = tuple(round(p3[i] - p0[i], 4) for i in range(3)); va = tuple(round(p1[i] - p0[i], 4) for i in range(3))
+        if sorted(map(abs, ua + va)) != [0, 0, 0, 0, 1, 1]: keep.append(q); continue
+        plane = round(sum(p0[i] * n[i] for i in range(3)), 4)
+        iu = math.floor(sum(p0[i] * ua[i] for i in range(3)) + .5 + 1e-6); iv = math.floor(sum(p0[i] * va[i] for i in range(3)) + .5 + 1e-6)
+        cells.setdefault((tid, tuple(n), c, plane, ua, va), {})[(iu, iv)] = p0
+    for (tid, n, c, plane, ua, va), cs in cells.items():
+        done = set()
+        for (iu, iv) in sorted(cs, key=lambda k: (k[1], k[0])):
+            if (iu, iv) in done: continue
+            w = 1
+            while (iu + w, iv) in cs and (iu + w, iv) not in done: w += 1
+            h = 1
+            while all((iu + k, iv + h) in cs and (iu + k, iv + h) not in done for k in range(w)): h += 1
+            for a in range(w):
+                for b in range(h): done.add((iu + a, iv + b))
+            p0 = cs[(iu, iv)]
+            P = lambda a, b: tuple(p0[i] + ua[i] * a + va[i] * b for i in range(3))
+            if tid.startswith("C3:"):   # luv in units of the 3x3 picture, anchored to the world so the pattern runs on across merges
+                a0, b0, a1, b1 = 16 * iu / 3, 16 * iv / 3, 16 * (iu + w) / 3, 16 * (iv + h) / 3
+                keep.append((tid, [P(0, 0), P(0, h), P(w, h), P(w, 0)], [(a0, b0), (a0, b1), (a1, b1), (a1, b0)], n, c))
+            else:
+                keep.append((tid, [P(0, 0), P(0, h), P(w, h), P(w, 0)], [(0, 0), (0, 16 * h), (16 * w, 16 * h), (16 * w, 0)], n, c))
+    return keep
+
 def bake(job, prefix):
     used = {}
     out = {}
@@ -192,6 +230,10 @@ def bake(job, prefix):
         tints = grp.get("tints", {}) if isinstance(grp, dict) else job.get("tints", {})
         btints = grp.get("block_tints", {}) if isinstance(grp, dict) else {}
         where = {(b[0], b[1], b[2]): b[3] for b in blocks}
+        ctint = {(b[0], b[1], b[2]): b[4] for b in blocks if len(b) > 4}      # per-block [tint0, tint1] (a block carried from its own planet)
+        hide = set(map(tuple, grp.get("hide", []))) if isinstance(grp, dict) else set()   # cells no camera can see into: solid left out, or sealed air
+        def hidden(p): return p in hide
+        fast = isinstance(grp, dict) and grp.get("fast_leaves")
         meshes = {"opaque": [], "blend": []}
         steps = {"opaque": [], "blend": []}
         fullcache = {}
@@ -223,7 +265,7 @@ def bake(job, prefix):
                 # the face reads its neighbours: same block, in the face's plane, its own face exposed
                 def same(p, nm=fname): return parse_state(where.get(p, "")).__getitem__(0).split(":")[-1] == nm
                 def covered(p, face):
-                    n = FACES[face][0]; return full((p[0] + n[0], p[1] + n[1], p[2] + n[2]))
+                    n = FACES[face][0]; q = (p[0] + n[0], p[1] + n[1], p[2] + n[2]); return full(q) or hidden(q)
                 for face, (n, uu, vv) in FACES.items():
                     if covered((bx, by, bz), face): continue
                     def j(du, dv, face=face, uu=uu, vv=vv):
@@ -231,7 +273,14 @@ def bake(job, prefix):
                         c = (bx + du * uu[0] + dv * vv[0], by + du * uu[1] + dv * vv[1], bz + du * uu[2] + dv * vv[2])
                         return same(c) and not covered(c, face)
                     pu = (uu[0] * bx + uu[1] * by + uu[2] * bz) % 3; pv = (vv[0] * bx + vv[1] * by + vv[2] * bz) % 3
-                    for k, tile in enumerate(plating_select(j, pu, pv)):
+                    tiles = plating_select(j, pu, pv)
+                    if grp.get("merge") and len(tiles) == 1 and 13 <= tiles[0] < 22:
+                        tid = "C3:" + PLATING[fname]; used[tid] = True
+                        quad = [face_coord(face, u, v, 0) for u, v in ((0, 0), (0, 1), (1, 1), (1, 0))]
+                        meshes["opaque"].append((tid, [(bx + q[0] - .5, by + q[1] - .5, bz + q[2] - .5) for q in quad],
+                                                 [(0, 0), (0, 16), (16, 16), (16, 0)], n, "#ffffff"))
+                        continue
+                    for k, tile in enumerate(tiles):
                         tid = "starcore:block/" + PLATING[fname] + _SUF[tile]; used[tid] = True
                         lift = 0 if k == 0 else .002 * k
                         quad = [face_coord(face, u, v, lift) for u, v in ((0, 0), (0, 1), (1, 1), (1, 0))]
@@ -248,7 +297,10 @@ def bake(job, prefix):
                         if cf:
                             # cullface turns with the variant rotation
                             v = DIRS[cf]; v = rot(v, "x", -rx, (0, 0, 0)); v = rot(v, "y", -ry, (0, 0, 0))
-                            if full((bx + round(v[0]), by + round(v[1]), bz + round(v[2]))): continue
+                            nb = (bx + round(v[0]), by + round(v[1]), bz + round(v[2]))
+                            if full(nb) or hidden(nb): continue
+                            if any(k in fname for k in ("glass", "airlock", "slime", "ice")) and parse_state(where.get(nb, ""))[0].split(":")[-1] == fname: continue   # like glass: no face between two of the same
+                            if fast and "leaves" in fname and "leaves" in where.get(nb, ""): continue   # fast leaves: no faces between leaves
                         tid = resolve(m["textures"], face["texture"], m.get("ns", "minecraft"))
                         used[tid] = True
                         uv = face.get("uv") or default_uv(d, f, t)
@@ -267,7 +319,7 @@ def bake(job, prefix):
                         uvs = uvs[k:] + uvs[:k]
                         n = DIRS[d]; n = rot(n, "x", -rx, (0, 0, 0)); n = rot(n, "y", -ry, (0, 0, 0))
                         kind = "blend" if alpha_kind(tid) == "blend" else "opaque"
-                        c = tint_for(state, tints, btints, face["tintindex"]) if "tintindex" in face else "#ffffff"
+                        c = ("#" + ctint[(bx, by, bz)][min(face["tintindex"], 1)] if (bx, by, bz) in ctint else tint_for(state, tints, btints, face["tintindex"])) if "tintindex" in face else "#ffffff"
                         meshes[kind].append((tid, [(bx + p[0] / 16 - .5, by + p[1] / 16 - .5, bz + p[2] / 16 - .5) for p in quad], uvs, n, c))
             steps["opaque"].append(len(meshes["opaque"])); steps["blend"].append(len(meshes["blend"]))
         out[gname] = (meshes, steps)
@@ -291,21 +343,29 @@ def bake(job, prefix):
     for cell, cx, cy in cells: sheet.paste(cell, (cx, cy))
     sheet.save(prefix + ".png", optimize=True)
     res = {"sheet": [W, H], "groups": {}}
+    raw = {"sheet": [W, H], "rects": rects, "groups": {}}
     for gname, (meshes, steps) in out.items():
+        if isinstance(job["groups"][gname], dict) and job["groups"][gname].get("merge"):
+            meshes = {k: merge(v) for k, v in meshes.items()}
+        drop = [tuple(d) for d in (job["groups"][gname].get("drop", []) if isinstance(job["groups"][gname], dict) else [])]
+        if drop: meshes = {k: [q for q in v if tuple(round(x) for x in q[3]) not in drop] for k, v in meshes.items()}
+        raw["groups"][gname] = meshes
         res["groups"][gname] = {"steps": steps}
         for kind, quads in meshes.items():
-            pos, uv, colr, nrm, idx = [], [], [], [], []
+            pos, uv, colr, nrm, idx, rect, luv = [], [], [], [], [], [], []
             for tid, quad, uvs, n, c in quads:
                 rx, ry, rw, rh = rects[tid]; base = len(pos) // 3
                 cc = tuple(int(c[i:i + 2], 16) for i in (1, 3, 5))
                 for p, (u, v) in zip(quad, uvs):
                     pos += [round(p[0], 4), round(p[1], 4), round(p[2], 4)]
-                    uv += [round((rx + u / 16 * rw) / W, 6), round(1 - (ry + v / 16 * rh) / H, 6)]
+                    uv += [round((rx + min(u, 16) / 16 * rw) / W, 6), round(1 - (ry + min(v, 16) / 16 * rh) / H, 6)]
+                    rect += [rx / W, 1 - (ry + rh) / H, rw / W, rh / H]; luv += [u / 16, 1 - v / 16]
                     colr += list(cc); nrm += [round(n[0]), round(n[1]), round(n[2])]
                 idx += [base, base + 1, base + 2, base, base + 2, base + 3]
-            res["groups"][gname][kind] = {"pos": pos, "uv": uv, "col": colr, "nrm": nrm, "idx": idx}
+            res["groups"][gname][kind] = {"pos": pos, "uv": uv, "col": colr, "nrm": nrm, "idx": idx, "rect": rect, "luv": luv}
         print(gname, {k: len(v) for k, v in meshes.items()}, "quads")
     json.dump(res, open(prefix + ".json", "w"), separators=(",", ":"))
+    json.dump(raw, open(prefix + ".quads.json", "w"), separators=(",", ":"))
     print(prefix, f"sheet {W}x{H}, {len(rects)} textures")
 
 if __name__ == "__main__":

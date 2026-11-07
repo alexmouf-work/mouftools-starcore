@@ -1,0 +1,275 @@
+<title>Starcore</title>
+<meta name="description" content="The most ambitious space mod ever built. Build a custom starship and explore millions of unique worlds.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=Instrument+Sans:wght@400;500;600&family=Syncopate:wght@400;700&family=Tektur:wght@400..900&display=swap">
+<style>
+/* Layout: one fixed WebGL stage behind two scrolling views. Journey: Earth, the pad, the system, the hyperdrive map, the Frontier,
+   three surfaces, the end. Updates: one scene per release. Scenes hand over at fades. Phones get their own framings and bottom sheets. */
+:root {
+  color-scheme: dark;
+  --bg: #05060f; --fg: #eef3ff; --muted: #97a3cc; --accent: #7fb2ff; --warm: #ffb870; --accent-ink: #05060f; --line: rgba(127,178,255,.22);
+  --display: "Syncopate", "Eurostile", "Arial Black", sans-serif; --body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --d-bg: #0b0716; --d-fg: #f6eeff; --d-muted: #b0a2cc; --d-accent: #2be0c8; --d-pink: #ff7ab6; --d-peach: #ffc9a3;
+  --ease: cubic-bezier(.4, 0, .2, 1);
+  /* no scrollbar anywhere: the page is driven by scroll, not navigated by it */
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; width: 0; height: 0; }
+html, body { background: var(--bg); color: var(--fg); }
+body { margin: 0; font-family: var(--body); font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; -ms-overflow-style: none; }
+#sky { position: fixed; inset: 0; z-index: 0; background: radial-gradient(ellipse 70% 60% at 72% 38%, #12215f 0%, rgba(18,33,95,0) 70%), var(--bg); transition: opacity .6s var(--ease); }
+#sky.site { background: linear-gradient(var(--sky-top, #5d9be0), var(--sky-bottom, #cfe4ff)); }
+#sky.hyper { background: #000; }
+#sky.front { background: radial-gradient(ellipse 60% 50% at 18% 28%, rgba(194,64,154,.42) 0%, rgba(194,64,154,0) 70%), radial-gradient(ellipse 55% 45% at 85% 75%, rgba(43,224,200,.22) 0%, rgba(43,224,200,0) 70%), var(--d-bg); }
+#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; }
+#labels { position: fixed; inset: 0; pointer-events: none; z-index: 3; overflow: hidden; }
+#fade { position: fixed; inset: 0; z-index: 4; pointer-events: none; background: #000; opacity: 0; }
+main { position: relative; z-index: 2; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+.panel { position: relative; min-height: 100svh; display: flex; align-items: center; box-sizing: border-box; pointer-events: none;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 72px 64px; }
+.wrap { width: 100%; max-width: 1240px; margin-inline: auto; display: flex; }
+.right .wrap { justify-content: flex-end; }
+.copy { pointer-events: auto; max-width: 31rem; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+.tall { display: block; padding-block: 0; }
+.tall > .sticky { position: sticky; top: 0; height: 100svh; display: flex; align-items: center; box-sizing: border-box; padding-block: 72px 64px; }
+.marker { position: absolute; left: 0; width: 1px; height: 1px; }
+h1, h2 { margin: 0; text-wrap: balance; font-family: var(--display); font-weight: 700; }
+p { margin: 0; }
+h1 { font-size: clamp(40px, 7.4vw, 104px); letter-spacing: .06em; line-height: .95; }
+h2 { font-size: clamp(26px, 3.6vw, 48px); line-height: 1.04; letter-spacing: .01em; }
+.lede { font-size: clamp(17px, 1.5vw, 20px); }
+.body { color: var(--muted); }
+.meta { font-size: 13px; color: var(--warm); letter-spacing: .02em; }
+.ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+.btn { pointer-events: auto; display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 4px; font: inherit; font-size: 15px; font-weight: 600;
+  text-decoration: none; border: 1px solid var(--line); color: var(--fg); transition: transform .16s var(--ease), border-color .16s ease; }
+.btn:hover { border-color: var(--accent); } .btn:active { transform: scale(.97); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.hint { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.hint::before { content: ""; width: 18px; height: 1px; background: currentColor; opacity: .6; }
+@keyframes rise { from { transform: translateY(18px); opacity: .15; } to { transform: none; opacity: 1; } }
+.hero .copy > * { animation: rise .9s var(--ease) both; }
+.hero .copy > *:nth-child(2) { animation-delay: 90ms; } .hero .copy > *:nth-child(3) { animation-delay: 180ms; } .hero .copy > *:nth-child(4) { animation-delay: 270ms; } .hero .copy > *:nth-child(5) { animation-delay: 340ms; }
+
+.cap { pointer-events: auto; display: flex; flex-direction: column; gap: 10px; max-width: 25rem; padding: 18px 20px; border-radius: 10px;
+  background: rgba(5,6,15,.62); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.cap-count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cap-name { font-family: var(--display); font-weight: 700; font-size: clamp(20px, 2.2vw, 28px); line-height: 1.1; }
+.cap-text { color: var(--muted); }
+.cap.swap .cap-name, .cap.swap .cap-text { animation: capin 520ms var(--ease) both; } .cap.swap .cap-text { animation-delay: 60ms; }
+@keyframes capin { from { transform: translateY(12px); opacity: .2; } to { transform: none; opacity: 1; } }
+.card { background: rgba(5,6,15,.5); padding: 18px 20px; border-radius: 10px; border: 1px solid var(--line); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+
+/* system labels */
+.plabel { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 12px; color: var(--fg); padding-left: 26px; will-change: transform, opacity; }
+.plabel::before { content: ""; position: absolute; left: 0; top: 50%; width: 20px; height: 1px; background: var(--accent); opacity: .7; transform-origin: left; transform: rotate(-32deg) translate(1px, 6px); }
+.plabel b { font-family: var(--display); font-size: 11px; letter-spacing: .08em; font-weight: 700; }
+.plabel span { color: var(--muted); margin-left: 8px; }
+
+/* the Frontier, exactly as Option D */
+.dsec { font-family: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif; color: var(--d-fg); --accent: var(--d-accent); --accent-ink: var(--d-bg); --muted: var(--d-muted); --line: rgba(43,224,200,.25); }
+.dsec h1 { font-family: "Tektur", "Arial Black", sans-serif; font-size: clamp(56px, 10vw, 150px); line-height: .86; font-weight: 800; font-variation-settings: "wdth" 125; letter-spacing: -.01em;
+  color: transparent; -webkit-text-stroke: 1.5px var(--d-fg); background: linear-gradient(100deg, var(--d-pink), var(--d-peach) 45%, var(--d-accent)); -webkit-background-clip: text; background-clip: text; }
+.dsec h2 { font-family: "Tektur", "Arial Black", sans-serif; font-size: clamp(34px, 5vw, 70px); line-height: .95; font-weight: 700; }
+.dsec .kicker { font-family: "Tektur", sans-serif; font-size: 15px; color: var(--d-accent); letter-spacing: .04em; }
+.dsec .btn { border-radius: 12px 2px 12px 2px; }
+.dsec .lede { color: var(--d-fg); }
+.dlabel { position: absolute; left: 0; top: 0; font-family: "Hanken Grotesk", Arial, sans-serif; font-size: 12px; color: #f6eeff; white-space: nowrap;
+  background: rgba(11,7,22,.72); border: 1px solid rgba(43,224,200,.5); border-radius: 8px; padding: 8px 10px; display: grid; gap: 2px; opacity: 0; transition: opacity .16s ease; }
+.dlabel.on { opacity: 1; }
+.dlabel b { font-family: "Tektur", sans-serif; font-size: 14px; font-weight: 600; color: #2be0c8; letter-spacing: .02em; }
+.dlabel span { color: #d9cdee; }
+.speed { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 3;
+  font-family: "Tektur", sans-serif; font-size: 12px; color: var(--d-muted); pointer-events: none; font-variant-numeric: tabular-nums; opacity: 0; transition: opacity .3s ease; }
+.speed b { color: var(--d-accent); font-size: 18px; font-weight: 600; }
+html[data-stage="front"] .speed { opacity: 1; }
+
+.tagline { font-size: clamp(40px, 7vw, 96px) !important; line-height: .95; -webkit-text-stroke: 0 !important;
+  background: linear-gradient(90deg, #ff7ab6, #ffc9a3, #2be0c8, #7fb2ff, #c99bff, #ff7ab6) 0 0 / 300% 100% !important; -webkit-background-clip: text !important; background-clip: text !important;
+  color: transparent !important; animation: hue 6s linear infinite; }
+@keyframes hue { to { background-position: 300% 0; } }
+/* landings */
+.wcard { display: grid; gap: 10px; }
+.wcard dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: 13px; }
+.wcard dt { color: var(--muted); } .wcard dd { margin: 0; }
+.wcard code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--d-accent); }
+.haz { display: flex; flex-wrap: wrap; gap: 6px; }
+.haz span { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(255,255,255,.25); }
+
+@media (max-width: 720px) {
+  .panel, .tall > .sticky { align-items: flex-end; padding-block: 72px 40px; }
+  .copy { background: rgba(5,6,15,.55); padding: 14px; border-radius: 10px; }
+  .plabel span { display: none; }
+}
+
+/* nav and tabs */
+#nav { position: fixed; z-index: 6; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 16px; box-sizing: border-box;
+  padding: 12px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px)); pointer-events: none;
+  background: linear-gradient(rgba(5,6,15,.55), rgba(5,6,15,0)); }
+#nav > * { pointer-events: auto; }
+.brand { font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: .14em; text-decoration: none; text-transform: uppercase; }
+.tabs { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(5,6,15,.55); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); margin-inline: auto; }
+.tabs button { font: inherit; font-size: 14px; font-weight: 600; color: var(--muted); background: none; border: 0; border-radius: 999px; padding: 0 16px; min-height: 36px; cursor: pointer;
+  transition: color .16s ease, background-color .16s ease; }
+.tabs button:hover { color: var(--fg); }
+.tabs button[aria-selected="true"] { color: var(--accent-ink); background: var(--fg); }
+#nav .btn { min-height: 38px; font-size: 14px; padding: 0 16px; }
+.nav-spacer { width: 1px; }
+#journey[hidden], #updates[hidden] { display: none; }
+
+/* the Updates view */
+.u-head { min-height: 92svh; display: flex; align-items: flex-end; box-sizing: border-box; padding: 96px max(16px, env(safe-area-inset-right, 0px)) 10svh max(16px, env(safe-area-inset-left, 0px)); pointer-events: none; }
+.u-head .copy { max-width: 34rem; background: rgba(5,6,15,.62); padding: 24px 26px; border-radius: 12px; border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.u-head h1 { font-size: clamp(40px, 6vw, 84px); }
+.u-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 2px; pointer-events: auto; }
+.u-list a { display: flex; gap: 14px; align-items: baseline; text-decoration: none; padding: 10px 0; border-top: 1px solid var(--line); color: var(--fg); }
+.u-list a span { font-family: var(--display); font-size: 13px; color: var(--accent); min-width: 3.2em; }
+.u-list a:hover b { color: var(--accent); }
+.ver .cap { max-width: 27rem; }
+.ver-num { font-family: var(--display); font-weight: 700; font-size: clamp(48px, 7vw, 96px); line-height: .9; color: transparent; -webkit-text-stroke: 1.2px var(--fg); letter-spacing: .02em; }
+.ver .cap-name { font-size: clamp(24px, 2.6vw, 34px); }
+#u-load { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5; font-size: 13px; color: var(--muted); pointer-events: none; transition: opacity .3s ease; }
+#u-load[hidden] { display: block; opacity: 0; }
+
+@media (max-width: 720px) {
+  #nav { gap: 8px; }
+  #nav .btn { display: none; }
+  .brand { font-size: 12px; letter-spacing: .1em; }
+  .tabs { margin-inline: auto 0; }
+  .tabs button { padding: 0 13px; min-height: 34px; font-size: 13px; }
+  /* every caption becomes a bottom sheet: the scene keeps the top of the screen */
+  .tall > .sticky { padding: 0; align-items: flex-end; }
+  .tall > .sticky > .wrap { padding: 0; }
+  .cap, .ver .cap { max-width: none; width: 100%; box-sizing: border-box; border-radius: 16px 16px 0 0; border-width: 1px 0 0; gap: 8px;
+    padding: 16px max(16px, env(safe-area-inset-left, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)); background: rgba(5,6,15,.78); }
+  .cap-name { font-size: 22px; }
+  .ver-num { font-size: 40px; }
+  .hero { align-items: flex-end; padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
+  .hero .copy { background: none; padding: 0; }
+  .hero h1 { font-size: clamp(34px, 11vw, 52px); letter-spacing: .02em; }
+  .u-head { min-height: 100svh; padding: 0; }
+  .u-head .wrap { align-self: stretch; align-items: flex-end; }
+  .u-head .copy { border-radius: 16px 16px 0 0; border-width: 1px 0 0; max-width: none; padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px)); }
+  #f-end .copy { background: none; }
+}
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+
+<div id="sky" aria-hidden="true"></div>
+<canvas id="gl" aria-hidden="true"></canvas>
+<div id="labels" aria-hidden="true"></div>
+<div id="fade" aria-hidden="true"></div>
+
+<nav id="nav" aria-label="Site">
+  <a class="brand" href="#journey">Starcore</a>
+  <div class="tabs" role="tablist" aria-label="View">
+    <button role="tab" id="tab-journey" aria-controls="journey" aria-selected="true" data-view="journey">Journey</button>
+    <button role="tab" id="tab-updates" aria-controls="updates" aria-selected="false" data-view="updates">Updates</button>
+  </div>
+  <a class="btn primary" href="#download">Download for Fabric</a>
+</nav>
+
+<main id="journey" role="tabpanel" aria-labelledby="tab-journey">
+<!-- Earth, then down into its top face -->
+<section id="earth" aria-label="Starcore">
+  <div class="panel hero" id="s-earth"><div class="wrap"><div class="copy">
+    <h1>Starcore</h1>
+    <p class="lede">The most ambitious space mod ever built. Build a custom starship and explore millions of unique worlds.</p>
+    <div class="ctas"><a class="btn primary" href="#download">Download for Fabric</a></div>
+    <p class="hint">Scroll to begin.</p>
+  </div></div></div>
+  <div class="panel" id="e-dive" style="min-height:150svh"></div>
+</section>
+
+<!-- the pad: the ship assembles as we come down, then lifts off -->
+<section id="site" aria-label="Build your starship">
+  <div class="panel tall" style="min-height:560svh">
+    <div class="marker" id="l-0" style="top:0%"></div><div class="marker" id="l-1" style="top:34%"></div>
+    <div class="marker" id="l-3" style="top:48%"></div><div class="marker" id="l-4" style="top:58%"></div>
+    <div class="sticky"><div class="wrap"><div class="cap" id="site-cap"><span class="cap-name"></span><p class="cap-text"></p></div></div></div>
+  </div>
+</section>
+
+<!-- the solar system, the ship's flight to the Stellate Cluster, the cut-away, and out until the system is one star -->
+<section id="system" aria-label="The solar system">
+  <div class="panel tall" style="min-height:1000svh">
+    <div class="marker" id="s-w0" style="top:0%"></div>
+    <div class="marker" id="s-c0" style="top:30%"></div><div class="marker" id="s-c1" style="top:42%"></div>
+    <div class="marker" id="s-c2" style="top:54%"></div><div class="marker" id="s-c3" style="top:66%"></div>
+    <div class="marker" id="s-out" style="top:79%"></div>
+    <div class="sticky"><div class="wrap"><div class="cap" id="sys-cap"><span class="cap-name"></span><p class="cap-text"></p></div></div></div>
+  </div>
+</section>
+
+<!-- the hyperdrive map, flown from the home system towards the core -->
+<section id="hyper" aria-label="The galaxy">
+  <div class="panel tall" style="min-height:560svh">
+    <div class="marker" id="h-0" style="top:0%"></div><div class="marker" id="h-1" style="top:42%"></div>
+    <div class="sticky"><div class="wrap"><div class="cap" id="hyper-cap"><span class="cap-name"></span><p class="cap-text"></p></div></div></div>
+  </div>
+</section>
+
+<!-- the Frontier: worlds passing by -->
+<section id="frontier" class="dsec" aria-label="The Frontier">
+  <div class="speed" aria-hidden="true">Warp <b id="d-speed">0.0</b> c</div>
+  <div class="panel tall" style="min-height:380svh">
+    <div class="marker" id="f-p1" style="top:36%"></div><div class="marker" id="f-p2" style="top:68%"></div>
+    <div class="sticky"><div class="wrap"><div class="cap"><span class="cap-name">The Frontier</span><p class="cap-text">Every star has a world. Every world is unique.</p></div></div></div>
+  </div>
+</section>
+
+<!-- three surfaces -->
+<section id="w-hazard" class="world" aria-label="Hostile worlds"><div class="panel tall" style="min-height:240svh"><div class="sticky"><div class="wrap"><div class="cap wcard" id="hazard-card"></div></div></div></div></section>
+<section id="w-rapture" class="world" aria-label="Rapture worlds"><div class="panel tall" style="min-height:240svh"><div class="sticky"><div class="wrap"><div class="cap wcard" id="rapture-card"></div></div></div></div></section>
+<section id="w-eden" class="world" aria-label="Eden"><div class="panel tall" style="min-height:240svh"><div class="sticky"><div class="wrap"><div class="cap wcard" id="eden-card"></div></div></div></div></section>
+<section id="w-geometry" class="world dsec" aria-label="What will you discover?">
+  <div class="panel" style="min-height:120svh"></div>
+  <div class="panel" id="f-end" style="min-height:120svh"><div class="wrap" style="justify-content:center"><div class="copy" id="download" style="align-items:center;text-align:center;max-width:44rem">
+    <h1 class="tagline">What will you discover?</h1>
+    <div class="ctas" style="justify-content:center"><a class="btn primary" href="#download">Download for Fabric</a></div>
+  </div></div></div>
+</section>
+</main>
+
+<main id="updates" role="tabpanel" aria-labelledby="tab-updates" hidden>
+<div id="u-load" hidden>Loading…</div>
+<section id="u-top" aria-label="Updates">
+  <div class="u-head"><div class="wrap"><div class="copy">
+    <h1>Updates</h1>
+    <p class="lede">Everything Starcore has added.</p>
+    <ul class="u-list">
+      <li><a href="#u-10"><span>1.0</span><b>The Core Update</b></a></li>
+      <li><a href="#u-11"><span>1.1</span><b>The Industry Update</b></a></li>
+      <li><a href="#u-12"><span>1.2</span><b>The Frontier Update</b></a></li>
+      <li><a href="#u-13"><span>1.3</span><b>The Encounters Update</b></a></li>
+    </ul>
+  </div></div></div>
+</section>
+<section id="u-10" class="ver" aria-label="The Core Update">
+  <div class="panel tall" style="min-height:300svh"><div class="sticky"><div class="wrap">
+    <div class="cap"><span class="ver-num">1.0</span><span class="cap-name">The Core Update</span><p class="cap-text">Planets with real gravity, built into your world.</p></div>
+  </div></div></div>
+</section>
+<section id="u-11" class="ver" aria-label="The Industry Update">
+  <div class="panel tall" style="min-height:300svh"><div class="sticky"><div class="wrap">
+    <div class="cap"><span class="ver-num">1.1</span><span class="cap-name">The Industry Update</span><p class="cap-text">Machines, power and fully custom starships.</p></div>
+  </div></div></div>
+</section>
+<section id="u-12" class="ver" aria-label="The Frontier Update">
+  <div class="panel tall" style="min-height:300svh"><div class="sticky"><div class="wrap">
+    <div class="cap"><span class="ver-num">1.2</span><span class="cap-name">The Frontier Update</span><p class="cap-text">A galaxy of unique planets to explore.</p></div>
+  </div></div></div>
+</section>
+<section id="u-13" class="ver" aria-label="The Encounters Update">
+  <div class="panel tall" style="min-height:300svh"><div class="sticky"><div class="wrap">
+    <div class="cap"><span class="ver-num">1.3</span><span class="cap-name">The Encounters Update</span><p class="cap-text">Space stations, mini planets and black holes in deep space.</p></div>
+  </div></div></div>
+</section>
+</main>
