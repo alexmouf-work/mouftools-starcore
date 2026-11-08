@@ -20,7 +20,7 @@ G = {"ship": old["ship"] if isinstance(old["ship"], dict) else {"blocks": old["s
 EDEN = {"grass": "#59c93c", "foliage": "#30bb0b", "birch": "#80a755", "spruce": "#619961", "water": "#3f76e4"}
 def planet(grass, foliage): return {"grass": grass, "foliage": foliage, "birch": "#80a755", "spruce": "#619961"}
 G["eden"] = {"blocks": crop("eden"), "tints": EDEN, "block_tints": tints_of("eden3"), "merge": True}
-G["rapture"] = {"blocks": crop("rapture"), "tints": planet("#543b3b", "#3a3434"), "block_tints": tints_of("rapture2"), "merge": True}
+G["rapture"] = {"blocks": crop("rapture"), "tints": planet("#543b3b", "#3a3434"), "block_tints": tints_of("rs4"), "merge": True}
 G["hazard"] = {"blocks": crop("hazard"), "tints": planet("#9d497e", "#984a7e"), "block_tints": tints_of("karst"), "merge": True}
 G["geometry"] = {"blocks": json.load(open("probe/crop64_geometry.json"))["blocks"], "tints": planet("#78a0c2", "#84a6c3"), "block_tints": tints_of("geometry2"), "merge": True}
 G.update(json.load(open(sys.argv[1]))["groups"])     # the Updates groups

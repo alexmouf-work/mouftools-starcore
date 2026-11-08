@@ -125,6 +125,8 @@ JM = ship("journey", ["ship", "eden", "rapture", "hazard", "geometry"], {"tube_x
 UM = ship("updates", ["ow", "sky_solid", "sky_hollow", "cluster", "asteroids", "station"])
 # the small things, as plain JSON
 D2 = {k: const("data2.js", k) for k in ("WORLDS", "COAG", "AURORA", "SISTERS")}
+import os as _os
+if _os.path.exists("probe/coag_pos64.json"): D2["COAG"]["pos"] = json.load(open("probe/coag_pos64.json"))["pos"]   # on the new bare Rapture shore
 # the hostile world is the Karst world 1_2/4 now (principal 2026-11-07: "pick another hostile world")
 D2["WORLDS"]["hazard"] = {"stem": "real_1_2_4", "dim": "starcore:frontier/1_2/4", "air": "TOXIC", "sky": "e6b49a", "kind": "FOG"}
 PLN = const("data.js", "PLANETS"); PLN["r_hazard"] = {"stem": "real_1_2_4", "glow": "#e6b49a"}

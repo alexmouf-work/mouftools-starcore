@@ -667,7 +667,7 @@ const WORLD_LOOK = {
     air: "Breathable", skyText: "Night, with aurora", hazards: [] },
   rapture: { tint: [1, .86, .82], sky: ["2a0a0b"], css: "radial-gradient(ellipse at 50% 120%, #4a1012 0%, #120405 55%, #050102 100%)", hemi: [0xffb0a8, 0x3a1010, .55], sun: [0xffd0c0, .9], stars: "#ffd6d0",
     fog: null, mote: 0xff5a4a, moteSize: .14, drift: () => [(Math.random() - .5) * .3, .3 + Math.random() * .5, (Math.random() - .5) * .3], angle: 2.95, title: "Rapture worlds",
-    extra: scene => { scene.userData.tick = coagulus(scene, COAG.pile, COAG.pos); }, focus: () => [COAG.pos[0], COAG.pos[1] + .9, COAG.pos[2]], dist: .2, camY: 8,
+    extra: scene => { scene.userData.tick = coagulus(scene, COAG.pile, COAG.pos); }, focus: () => [COAG.pos[0], COAG.pos[1] + .9, COAG.pos[2]], dist: .2, camY: COAG.pos[1] + 7.5,
     text: "Seas of blood, giant fungi, and the Coaguli that crawl out of them.",
     air: "Breathable, and it is blood", skyText: "Starfield", hazards: ["Rapture III", "Corrosive IV", "Heat I"] },
   hazard: { tint: [1, .94, .86], sky: ["e6b49a"], css: "linear-gradient(#5b3426, #e6b49a 85%)", hemi: [0xffe6d4, 0x4a3226, .65], sun: [0xfff0e0, .9], fog: 0xd8a68c, mote: 0xb8e01a, moteSize: .1, rain: true, camY: 72, lookY: 22,

@@ -54,3 +54,8 @@ Before this pass the page was 10.9 MB with everything inline as base64 PNGs pre-
   (`probes/GrassProbe.java`: Rapture #543b3b, Karst #9d497e, geometric #78a0c2), Eden its biome's own (#59c93c / #30bb0b, the grassy
   cloud included), the Overworld patch vanilla forest (the server's /locate). The mini planets' vanilla grass is left out: the game
   does not tint it for its planet. Cherry and pale oak leaves are untinted, as in vanilla.
+- `crop.py` / `crop_box.py` keep a block when a neighbour lets light through (air, or any block whose model is not a full opaque
+  cube, by the baker's own test). Counting only air dropped all ground under grass and flowers: Eden kept 252 of its ~4,000 grassy
+  cloud blocks.
+- Rapture is now a bare stretch of the same world (`rs4`, window 40,8: no vegetation, ~8% blood), found by `bare.py`, which scores
+  every 64-block window by bare ground; the Coagulus stands on flat silt beside the blood.
