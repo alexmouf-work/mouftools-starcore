@@ -256,7 +256,9 @@ function buildSystem() {
       b.el.style.transform = `translate(${q.x + 12}px, ${q.y - (b === B.luneus ? 40 : 22)}px)`;
     });
   }
+  let synced = false;
   function frameA(dt, t, p) {
+    if (!synced) { B.overworld.g.userData.body.rotation.y = HEROSTATE.earthRot; B.luneus.g.userData.body.rotation.y = HEROSTATE.earthRot; synced = true; }
     RA(p, camA.position, look);
     const k = 1 - smooth(0, .25, p);
     camA.position.x += st.px * .3 * k; camA.position.y += st.py * .22 * k;
@@ -786,6 +788,7 @@ function startJourney(from = 0) {
 }
 function seek(t) { PLAYER.t = clamp(t, 0, TOTAL); scrollTo(0, yAt(PLAYER.t)); }
 $("play").addEventListener("click", () => startJourney(0));
+if (window.__wantPlay) { $("play").classList.remove("busy"); $("play").lastChild.textContent = "Start the journey"; startJourney(0); }   // pressed while loading
 $("replay").addEventListener("click", () => startJourney(0));
 ppEl.addEventListener("click", () => { if (PLAYER.t >= TOTAL) startJourney(0); else setPlaying(!PLAYER.on); });
 function trackAt(e) { const r = trackEl.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width) * TOTAL; }
@@ -814,7 +817,7 @@ function playerTick(dt) {
 }
 resize(); route();
 
-const clock = new THREE.Clock(); let T = 0;
+const clock = new THREE.Clock(); let T = HEROSTATE.t;     // the opening shot's clock carries on, so Luneus is where it was
 function loop() {
   requestAnimationFrame(loop);
   if (document.hidden) return;
@@ -848,7 +851,7 @@ function loop() {
   fadeEl.style.opacity = (col === "#000" ? fade : fade * .92).toFixed(3);
   const tx = st.active ? ndc.x : 0, ty = st.active ? ndc.y : 0;
   st.px += (tx - st.px) * (RM ? 0 : 1 - Math.exp(-dt * 3)); st.py += (ty - st.py) * (RM ? 0 : 1 - Math.exp(-dt * 3));
-  if (ok) { w.s.frame(dt, T, sp.get(w)); LENS.render(w.s.scene, w.s.cam); }
+  if (ok) { w.s.frame(dt, T, sp.get(w)); LENS.render(w.s.scene, w.s.cam); if (!HEROSTATE.done && window.heroDone) heroDone(); }
   else { R.setRenderTarget(null); R.clear(); }
   // one scene a frame, ahead of the reader: the next two are built before they are scrolled to
   if (ok) for (const j of [k + 1, k + 2, k - 1]) { const n = stages[j]; if (n && !n.s && n.ready()) break; }

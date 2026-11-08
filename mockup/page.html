@@ -7,6 +7,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preload" as="image" href="hero.webp" type="image/webp" fetchpriority="high">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=Instrument+Sans:wght@400;500;600&family=Syncopate:wght@400;700&family=Tektur:wght@400..900&display=swap">
@@ -171,6 +172,8 @@ html[data-stage="front"] .speed { opacity: 1; }
 html.lock { overflow: hidden; overscroll-behavior: none; }
 .btn { cursor: pointer; background: none; }
 .btn.play { gap: 10px; } .btn.play svg { width: 14px; height: 14px; }
+.btn.play.busy { opacity: .8; cursor: progress; } .btn.play.busy svg { animation: pulse 1s ease-in-out infinite alternate; }
+@keyframes pulse { to { opacity: .3; } }
 #player { position: fixed; z-index: 6; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(560px, calc(100vw - 32px));
   display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 8px; box-sizing: border-box; border-radius: 999px; background: rgba(5,6,15,.62);
   border: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: opacity .3s ease; }

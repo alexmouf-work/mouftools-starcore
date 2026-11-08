@@ -46,8 +46,16 @@ function expand(img, spec, div) {
 }
 const bootEl = document.getElementById("boot");
 performance.mark("boot");
-// the hero needs the sheets and the small JSON; the models (journey.txt) keep loading behind it
-const jbinP = inflate("journey.txt");
-Promise.all([loadImg("tex.webp"), loadImg("planets.webp"), getOk("journey.json").then(r => r.json())])
-  .then(([texImg, planetsImg, J]) => { performance.mark("fetched"); start({ texImg, planetsImg, J, jbinP }); performance.mark("started"); bootEl.hidden = true; })
-  .catch(err => { bootEl.textContent = "This page could not load its scenes."; console.error(err); });
+// 1. the opening shot: one 47 KB image (preloaded from the page's head) and HERO, inlined
+const heroP = loadImg("hero.webp").then(img => { startHero(img); performance.mark("hero"); bootEl.hidden = true; });
+// 2. the rest, only once the opening shot has drawn, so the two never share the line
+const restP = heroP.catch(err => console.error(err)).then(() => {
+  const jbinP = inflate("journey.txt");
+  return Promise.all([loadImg("tex.webp"), loadImg("planets.webp"), getOk("journey.json").then(r => r.json())])
+    .then(([texImg, planetsImg, J]) => ({ texImg, planetsImg, J, jbinP }));
+});
+// Start pressed before the rest has landed: say so on the button, and play the moment it can
+const playBtn = document.getElementById("play");
+playBtn.addEventListener("click", () => { if (window.__started) return; window.__wantPlay = true; playBtn.classList.add("busy"); playBtn.lastChild.textContent = "Loading\u2026"; });
+restP.then(A => { performance.mark("fetched"); start(A); window.__started = true; performance.mark("started"); bootEl.hidden = true; })
+  .catch(err => { bootEl.hidden = false; bootEl.textContent = "This page could not load its scenes."; console.error(err); });

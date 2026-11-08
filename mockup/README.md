@@ -59,3 +59,11 @@ Before this pass the page was 10.9 MB with everything inline as base64 PNGs pre-
   cloud blocks.
 - Rapture is now a bare stretch of the same world (`rs4`, window 40,8: no vegetation, ~8% blood), found by `bare.py`, which scores
   every 64-block window by bare ground; the Coagulus stands on flat silt beside the blood.
+
+## The opening shot loads first (v15)
+- `hero.js` draws Earth, Luneus, the stars, the sun's glow, the orbits and the stardust on its own canvas from one 47 KB image
+  (`hero.webp`, preloaded in the head) and `HERO` inlined in the page; `boot.js` fetches the other ~4 MB only after it has drawn.
+  When the full site draws its first frame the opening canvas crossfades away; Earth's spin and the clock carry across.
+- Start pressed early reads "Loading..." and plays the moment the rest lands.
+- Measured (`heroprobe.js`, iPhone, 4x CPU, 4G): opening shot ~2.0 s, everything ~4.7 s; before, nothing until ~4.4 s. On slow 3G
+  (`earlyplay.js`): opening shot 2.4 s, everything ~15 s.
