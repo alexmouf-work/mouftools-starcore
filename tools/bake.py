@@ -292,7 +292,7 @@ def bake(job, prefix):
                                                  [(0, 0), (0, 16), (16, 16), (16, 0)], n, "#ffffff"))
                 steps["opaque"].append(len(meshes["opaque"])); steps["blend"].append(len(meshes["blend"]))
                 continue
-            planes = Counter()   # faces of this block already drawn in a plane: an overlay (grass side, tinted layers) sits on top of them
+            planes = {}   # faces of this block already drawn in a plane: an overlay (grass side, tinted layers) sits on top of them
             for mj in models_for(state) or ():
                 ap = json.loads(mj); m = model(ap["model"]); rx, ry = ap.get("x", 0), ap.get("y", 0)
                 for e in m["elements"] or []:
@@ -328,8 +328,14 @@ def bake(job, prefix):
                         # ⚠️ AN OVERLAY ON THE SAME PLANE AS ITS BASE FIGHTS IT. The game draws them in order at one depth; here the
                         # base and the overlay are merged into different rectangles, so their triangles interpolate depth differently
                         # and flicker. Lift each further face in a plane a hair along its normal, as the plating overlays are.
+                        # ⚠️ ONLY WHERE THEY ACTUALLY OVERLAP. A connected texture (the airlocks, the glass) tiles one face from nine
+                        # pieces side by side in one plane; counting every face in the plane lifted the ninth an eighth of a block out
+                        # and the starship's dome came apart like scales (principal 2026-11-08). Count the earlier faces this one covers.
                         pk = (tuple(round(x) for x in n), round(sum(quad[0][i] * n[i] for i in range(3)) / 16, 3))
-                        lift = .0157 * planes[pk]; planes[pk] += 1
+                        ax2 = [i for i in range(3) if round(n[i]) == 0]
+                        box = [(min(p[i] for p in quad), max(p[i] for p in quad)) for i in ax2]
+                        under = sum(1 for ob in planes.setdefault(pk, []) if all(box[j][0] < ob[j][1] - 1e-3 and ob[j][0] < box[j][1] - 1e-3 for j in range(2)))
+                        lift = .0157 * under; planes[pk].append(box)
                         meshes[kind].append((tid, [(bx + p[0] / 16 - .5 + n[0] * lift, by + p[1] / 16 - .5 + n[1] * lift, bz + p[2] / 16 - .5 + n[2] * lift) for p in quad], uvs, n, c))
             steps["opaque"].append(len(meshes["opaque"])); steps["blend"].append(len(meshes["blend"]))
         out[gname] = (meshes, steps)
