@@ -286,7 +286,8 @@ def bake(job, prefix):
                         continue
                     for k, tile in enumerate(tiles):
                         tid = "starcore:block/" + PLATING[fname] + _SUF[tile]; used[tid] = True
-                        lift = 0 if k == 0 else .0157 * k   # each overlay a hair proud of the last, or they fight for the same depth
+                        lift = 0 if k == 0 else 1 / 128   # every overlay ONE step proud of its base (the packing's 1/128 grid), never stacked: stacking
+                        # them a step each put the sixth trim a tenth of a block out and the hull fanned out at every edge (principal 2026-11-08)
                         quad = [face_coord(face, u, v, lift) for u, v in ((0, 0), (0, 1), (1, 1), (1, 0))]
                         meshes["opaque"].append((tid, [(bx + q[0] - .5, by + q[1] - .5, bz + q[2] - .5) for q in quad],
                                                  [(0, 0), (0, 16), (16, 16), (16, 0)], n, "#ffffff"))
@@ -335,7 +336,7 @@ def bake(job, prefix):
                         ax2 = [i for i in range(3) if round(n[i]) == 0]
                         box = [(min(p[i] for p in quad), max(p[i] for p in quad)) for i in ax2]
                         under = sum(1 for ob in planes.setdefault(pk, []) if all(box[j][0] < ob[j][1] - 1e-3 and ob[j][0] < box[j][1] - 1e-3 for j in range(2)))
-                        lift = .0157 * under; planes[pk].append(box)
+                        lift = (1 / 128 if under else 0); planes[pk].append(box)   # one step over what it covers, however many
                         meshes[kind].append((tid, [(bx + p[0] / 16 - .5 + n[0] * lift, by + p[1] / 16 - .5 + n[1] * lift, bz + p[2] / 16 - .5 + n[2] * lift) for p in quad], uvs, n, c))
             steps["opaque"].append(len(meshes["opaque"])); steps["blend"].append(len(meshes["blend"]))
         out[gname] = (meshes, steps)
