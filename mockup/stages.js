@@ -337,27 +337,8 @@ function buildSite(o = {}) {
     plumes.forEach(m => { const U = m.geometry.attributes.uv; const u0 = r0[0] / BW, u1 = (r0[0] + fs) / BW, v1 = 1 - fy / BH, v0 = 1 - (fy + fs) / BH;
       U.setXY(0, u0, v1); U.setXY(1, u0, v0); U.setXY(2, u1, v1); U.setXY(3, u1, v0); U.needsUpdate = true; });
   }
-  // power and fuel: Lab solar panels (3x3 deck, + west, − east, post, cell array) and a bank of Lab fluid tanks with fuel windows
-  const DECK = blockGeo(["tank", "tank", "tank_inner", "tank_inner", "tank", "tank"], [3, .25, 3]);
-  const ARRAY = blockGeo(["tank", "tank", "solar_cells", "solar_back", "tank", "tank"], [3, .12, 3]);
-  const POST = blockGeo(all6("tank"), [.375, 1.1, .375]);
-  const TERMP = blockGeo(["tank", "solar_pos", "tank", "tank", "tank", "tank"], [.25, .75, .5]), TERMN = blockGeo(["solar_neg", "tank", "tank", "tank", "tank", "tank"], [.25, .75, .5]);
-  const panels = [], panelG = [];
-  [[-13, -9], [-13, -4], [-13, 1], [-17.5, -4]].forEach(([x, z]) => {
-    const g = new THREE.Group(); g.position.set(x, hgt(x, z) + .5, z); scene.add(g); panelG.push(g);
-    const d = new THREE.Mesh(DECK, BMAT); d.position.y = .125; g.add(d);
-    const tp = new THREE.Mesh(TERMP, BMAT); tp.position.set(-1.375, .375, 0); g.add(tp);
-    const tn = new THREE.Mesh(TERMN, BMAT); tn.position.set(1.375, .375, 0); g.add(tn);
-    const post = new THREE.Mesh(POST, BMAT); post.position.y = .8; g.add(post);
-    const arr = new THREE.Mesh(ARRAY, BMAT); arr.position.y = 1.45; arr.rotation.z = -.32; g.add(arr); panels.push(arr);
-  });
-  const TANK = blockGeo(["tank", "tank", "tank_top", "tank_bottom", "tank", "tank"]), WIN = blockGeo(["tank", "tank", "tank_top", "tank_bottom", "tank", "window_orange"]);
-  const tanks = [];
-  for (const [x, z] of [[10, 1], [10, 2], [12, 1], [12, 2]]) for (let y = 1; y <= 3; y++) if (!(y === 2 && z === 1)) tanks.push([x, y, z]);
-  const tankIM = inst(TANK, BMAT, tanks), winIM = inst(WIN, BMAT, [[10, 2, 1], [12, 2, 1]]);
-  const PIPE = blockGeo(all6("pipe"), [1, .375, .375]); const pipe = []; for (let x = 7; x <= 9; x++) pipe.push([x, 1.3, 2]); const pipeIM = inst(PIPE, BMAT, pipe);
-  // the Industry Update's order of work: four panels, the tank bank, the pipe, then the ship
-  const machines = [...panelG.map(g => k => g.scale.setScalar(Math.max(.001, k))), k => { tankIM.count = Math.round(k * tanks.length); winIM.count = k > .5 ? 2 : 0; }, k => { pipeIM.count = Math.round(k * pipe.length); }];
+  // (the hand-built solar panels and fuel tanks that stood here are gone, principal 2026-11-07: "it looks broken and weird")
+  const machines = [];
   const builder = suitedPlayer("frontier"); builder.position.set(-4.6, 1.5, -5.4); builder.rotation.y = .55; scene.add(builder); builder.userData.drill.visible = false;
 
   const cap = IND ? null : $("site-cap");
@@ -369,8 +350,8 @@ function buildSite(o = {}) {
   function layout() {
     const n = st.narrow, f = n ? 1.45 : 1;
     if (IND) {
-      // machines first, then the ship, then away: P.l = [machines done, ship done, ignition, lift]
-      P.l = [.22, .5, .6, .68];
+      // the ship builds itself, then away: P.l = [start, ship done, ignition, lift]
+      P.l = [.02, .5, .6, .68];
       R_ = rail([
         { p: 0, pos: [-24 * f, 12 * f, -22 * f], look: [-8, 2, -2] },
         { p: .24, pos: [20 * f, 10 * f, -24 * f], look: [n ? 2 : 4, 3, 0] },
@@ -411,7 +392,6 @@ function buildSite(o = {}) {
     const alt = smooth(.05, .65, lift);
     skyEl.style.setProperty("--sky-top", mix("#5d9be0", "#05060f", alt)); skyEl.style.setProperty("--sky-bottom", mix("#cfe4ff", "#0d1430", alt));
     space.userData.mat.uniforms.time.value = t; space.userData.mat.uniforms.alpha.value = smooth(.35, .8, lift);
-    panels.forEach((arr, i) => arr.rotation.z = -.32 + Math.sin(t * .2 + i) * .02);
     if (cap) capSwap(cap, stepIndex(p, [0, P.l[2]]), items);
   }
   return { sec, scene, cam, layout, frame, sky: "site" };
@@ -771,6 +751,60 @@ function route() {
   else if (h === "#journey" || h === "") setView("journey", true);
 }
 addEventListener("hashchange", route);
+
+/* ---- the player: the Journey scrolls itself, chapter by chapter, at a set pace; nobody has to scroll ----
+   It drives the page's own scroll position, so every scene, caption and hand-over runs exactly as it was built. Each chapter runs
+   from its section's top to the next section's top (the hand-over included). Manual scrolling is off on the Journey. */
+const PLAYER = { on: false, started: false, t: 0,
+  D: [7, 22, 36, 18, 13, 10, 10, 10, 11],          // seconds a chapter: Earth, the starship, the system, the galaxy, the Frontier, three worlds, the end
+  names: ["Earth", "Your starship", "The solar system", "The galaxy", "The Frontier", "Hostile worlds", "Rapture worlds", "Eden", "What will you discover?"] };
+const ppEl = $("pp"), trackEl = $("track"), fillEl = $("fill"), playerEl = $("player");
+const TOTAL = PLAYER.D.reduce((a, b) => a + b, 0);
+function chapterStart(i) { return PLAYER.D.slice(0, i).reduce((a, b) => a + b, 0); }
+$("ticks").innerHTML = PLAYER.names.map((n, i) => `<i style="left:${(chapterStart(i) / TOTAL * 100).toFixed(2)}%"><span>${n}</span></i>`).join("");
+function yAt(t) {
+  const S = VIEWS.journey.stages, end = document.documentElement.scrollHeight - innerHeight;
+  let a = 0;
+  for (let i = 0; i < S.length; i++) {
+    const y0 = S[i].sec.offsetTop, y1 = i < S.length - 1 ? S[i + 1].sec.offsetTop : end, d = PLAYER.D[i];
+    if (t <= a + d || i === S.length - 1) return Math.min(end, y0 + (y1 - y0) * clamp((t - a) / d));
+    a += d;
+  }
+  return end;
+}
+function setPlaying(on) {
+  PLAYER.on = on; ppEl.classList.toggle("paused", !on); ppEl.setAttribute("aria-label", on ? "Pause" : "Play");
+}
+function startJourney(from = 0) {
+  PLAYER.started = true; PLAYER.t = from; playerEl.hidden = false; setPlaying(true);
+}
+function seek(t) { PLAYER.t = clamp(t, 0, TOTAL); scrollTo(0, yAt(PLAYER.t)); }
+$("play").addEventListener("click", () => startJourney(0));
+$("replay").addEventListener("click", () => startJourney(0));
+ppEl.addEventListener("click", () => { if (PLAYER.t >= TOTAL) startJourney(0); else setPlaying(!PLAYER.on); });
+function trackAt(e) { const r = trackEl.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width) * TOTAL; }
+trackEl.addEventListener("pointerdown", e => { trackEl.setPointerCapture(e.pointerId); seek(trackAt(e)); trackEl.dataset.drag = "1"; });
+trackEl.addEventListener("pointermove", e => { if (trackEl.dataset.drag) seek(trackAt(e)); });
+trackEl.addEventListener("pointerup", () => { delete trackEl.dataset.drag; });
+const chapterOf = t => { let i = 0; while (i < PLAYER.D.length - 1 && t >= chapterStart(i + 1)) i++; return i; };
+addEventListener("keydown", e => {
+  if (view !== "journey" || !PLAYER.started || /input|textarea/i.test(e.target.tagName)) return;
+  if (e.code === "Space") { e.preventDefault(); ppEl.click(); }
+  else if (e.code === "ArrowRight") { e.preventDefault(); seek(chapterStart(Math.min(PLAYER.D.length - 1, chapterOf(PLAYER.t) + 1))); }
+  else if (e.code === "ArrowLeft") { e.preventDefault(); const i = chapterOf(PLAYER.t); seek(chapterStart(PLAYER.t - chapterStart(i) > 2 ? i : Math.max(0, i - 1))); }
+});
+// no manual scrolling on the Journey: wheel, touch and scroll keys do nothing there (the Updates tab still scrolls)
+const noScroll = e => { if (view === "journey") e.preventDefault(); };
+addEventListener("wheel", noScroll, { passive: false });
+addEventListener("touchmove", e => { if (view === "journey" && !e.target.closest("#track")) e.preventDefault(); }, { passive: false });
+addEventListener("keydown", e => { if (view === "journey" && ["PageDown", "PageUp", "ArrowDown", "ArrowUp", "Home", "End"].includes(e.code)) e.preventDefault(); });
+function playerTick(dt) {
+  HTML.classList.toggle("lock", view === "journey");
+  if (view !== "journey") { if (PLAYER.on) setPlaying(false); return; }
+  if (PLAYER.on) { PLAYER.t += dt; if (PLAYER.t >= TOTAL) { PLAYER.t = TOTAL; setPlaying(false); } scrollTo(0, yAt(PLAYER.t)); }
+  else if (!PLAYER.started && scrollY !== 0) scrollTo(0, 0);
+  const f = PLAYER.t / TOTAL; fillEl.style.width = (f * 100).toFixed(2) + "%"; trackEl.setAttribute("aria-valuenow", Math.round(f * 100));
+}
 resize(); route();
 
 const clock = new THREE.Clock(); let T = 0;
@@ -778,6 +812,8 @@ function loop() {
   requestAnimationFrame(loop);
   if (document.hidden) return;
   const dt = Math.min(clock.getDelta(), 1 / 20); T += dt;
+  // the player keeps wall-clock time (a slow device drops frames, it does not stretch the film); capped so a background tab cannot jump
+  const now = performance.now(); playerTick(Math.min(.25, (now - (loop.last || now)) / 1000)); loop.last = now;
   const V = VIEWS[view], stages = V.stages;
   if (!stages.length) { R.setRenderTarget(null); R.clear(); return; }
   const mid = scrollY + innerHeight * .5;

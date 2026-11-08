@@ -14,9 +14,16 @@ def load(name):
     info = [d["key"][k] for k in keys]
     return arr, info, d["origin"]
 def is_air(info): return np.array([v["block"].split("[")[0] in ("minecraft:air", "minecraft:cave_air", "minecraft:void_air") for v in info])
+# ⚠️ LEAVES AND PLANTS ARE SEE-THROUGH, so the flood passes them. Counting them as walls sealed the ground under every dense canopy,
+# its faces were culled into "sealed" cells, and the mini planets' tree-covered caps came out as holes into their hollow insides
+# (principal 2026-11-08: "the top ~1/3 of the planets ... missing their textures"). Glass stays a wall: a station's rooms stay unbaked.
+SEE = ("leaves", "short_grass", "tall_grass", "fern", "bush", "flower", "vine", "sapling", "lichen", "litter", "petals", "moss_carpet", "sweet_berry")
+def passable(info): return np.array([v["block"].split("[")[0] in ("minecraft:air", "minecraft:cave_air", "minecraft:void_air") or any(k in v["block"] for k in SEE) for v in info])
 def visible(arr, info, open_sides=True):
-    """outside air: air reached by flood from the box's top (and sides if open_sides); kept: solid touching outside air or the box edge"""
-    air = is_air(info)[arr]
+    """outside: air (and see-through plants) reached by flood from the box's top (and sides if open_sides); kept: anything not air
+    touching that, or the box edge"""
+    see = passable(info)[arr]; air_only = is_air(info)[arr]
+    air = see
     out = np.zeros_like(air)
     out[-1] |= air[-1]
     if open_sides: out[:, 0] |= air[:, 0]; out[:, -1] |= air[:, -1]; out[:, :, 0] |= air[:, :, 0]; out[:, :, -1] |= air[:, :, -1]; out[0] |= air[0]
@@ -28,8 +35,8 @@ def visible(arr, info, open_sides=True):
         out = g
     pad = np.pad(out, 1, constant_values=True)
     near = pad[2:, 1:-1, 1:-1] | pad[:-2, 1:-1, 1:-1] | pad[1:-1, 2:, 1:-1] | pad[1:-1, :-2, 1:-1] | pad[1:-1, 1:-1, 2:] | pad[1:-1, 1:-1, :-2]
-    keep = near & ~air
-    return keep, out, air
+    keep = near & ~air_only
+    return keep, out, air_only
 def group(name, arr, info, keep, out, air, centre, tints=None, merge=True, skip=()):
     blocks, hide = [], set()
     ys, zs, xs = np.nonzero(keep)

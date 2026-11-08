@@ -78,7 +78,7 @@ function netGeo(key) {
     if (nz > .5) { px = 128 + s(x); py = 128 + s(-y); } else if (nx > .5) { px = 256 + s(-z); py = 128 + s(-y); }
     else if (nz < -.5) { px = 384 + s(-x); py = 128 + s(-y); } else if (nx < -.5) { px = s(z); py = 128 + s(-y); }
     else if (ny > .5) { px = 128 + s(x); py = s(z); } else { px = 256 + s(x); py = s(-z); }
-    U.setXY(i, lerp(r.u0, r.u1, px / 512), lerp(r.v1, r.v0, py / 256));
+    U.setXY(i, lerp(r.u0, r.u1, px / 512), lerp(r.v1, r.v0, py / 128));
   }
   geoCache.set("net:" + key, g);
   return g;
@@ -243,7 +243,7 @@ function suitedPlayer(grade) {
 }
 
 /* ---- baked block models: the mod's own blockstates and models, baked offline and packed as quads ----
-   axis-aligned quads in 26 bytes (corner, two edge axes, size, texture, tint, uv), the rest in 42 (four corners). Coplanar faces of
+   axis-aligned quads in 26 bytes (corner, two edge axes, size, texture, tint, uv), the rest in 42 (four corners); positions in 1/128 block. Coplanar faces of
    one texture were merged at bake time, so a merged quad's uv runs past one texture and the shader tiles it with fract() (a plating
    wall by its 3x3 period). Shading is Minecraft's own: top 1.0, north/south 0.8, east/west 0.6, bottom 0.5, times the scene's tint. */
 function quadPack(meta, bin) {
@@ -292,8 +292,8 @@ function quadGeo(P, gname, kind, list) {
     }
   };
   if (list === "axis") for (let q = 0; q < n; q++) {
-    const o = off + q * 26, x = dv.getInt16(o, true) / 16, y = dv.getInt16(o + 2, true) / 16, z = dv.getInt16(o + 4, true) / 16, code = dv.getUint16(o + 6, true);
-    const w = dv.getUint16(o + 8, true) / 16, h = dv.getUint16(o + 10, true) / 16;
+    const o = off + q * 26, x = dv.getInt16(o, true) / 128, y = dv.getInt16(o + 2, true) / 128, z = dv.getInt16(o + 4, true) / 128, code = dv.getUint16(o + 6, true);
+    const w = dv.getUint16(o + 8, true) / 128, h = dv.getUint16(o + 10, true) / 128;
     const U = AXV[code & 7], V = AXV[code >> 3 & 7], Nn = AXV[code >> 6 & 7];
     const c1 = [x + V[0] * h, y + V[1] * h, z + V[2] * h];
     put(q, [[x, y, z], c1, [c1[0] + U[0] * w, c1[1] + U[1] * w, c1[2] + U[2] * w], [x + U[0] * w, y + U[1] * w, z + U[2] * w]], Nn[0], Nn[1], Nn[2], dv.getUint16(o + 12, true),
@@ -301,7 +301,7 @@ function quadGeo(P, gname, kind, list) {
       dv.getInt16(o + 18, true) / 3, dv.getInt16(o + 20, true) / 3, dv.getInt16(o + 22, true) / 3, dv.getInt16(o + 24, true) / 3, code >> 9 & 3);
   } else for (let q = 0; q < n; q++) {
     const o = off + q * 42, cs = [];
-    for (let c = 0; c < 4; c++) cs.push([dv.getInt16(o + c * 6, true) / 64, dv.getInt16(o + c * 6 + 2, true) / 64, dv.getInt16(o + c * 6 + 4, true) / 64]);
+    for (let c = 0; c < 4; c++) cs.push([dv.getInt16(o + c * 6, true) / 128, dv.getInt16(o + c * 6 + 2, true) / 128, dv.getInt16(o + c * 6 + 4, true) / 128]);
     put(q, cs, dv.getInt8(o + 38) / 127, dv.getInt8(o + 39) / 127, dv.getInt8(o + 40) / 127, dv.getUint16(o + 24, true),
       dv.getUint8(o + 26) / 255, dv.getUint8(o + 27) / 255, dv.getUint8(o + 28) / 255,
       dv.getInt16(o + 29, true) / 3, dv.getInt16(o + 31, true) / 3, dv.getInt16(o + 33, true) / 3, dv.getInt16(o + 35, true) / 3, dv.getUint8(o + 37));

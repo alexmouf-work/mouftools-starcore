@@ -1,0 +1,20 @@
+const { chromium, devices } = require('playwright');
+(async () => {
+  const mode = process.argv[2] || 'desk';
+  const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const ctx = mode === 'phone' ? await b.newContext({ ...devices['iPhone 13'] }) : await b.newContext({ viewport: { width: 1440, height: 900 } });
+  const pg = await ctx.newPage(); const errs = []; pg.on('pageerror', e => errs.push(String(e)));
+  await pg.goto('http://127.0.0.1:8766/star-core-journey.html'); await pg.waitForTimeout(6000);
+  const st = async () => pg.evaluate(() => ({ y: Math.round(scrollY), player: !document.getElementById('player').hidden, paused: document.getElementById('pp').classList.contains('paused'), fill: document.getElementById('fill').style.width }));
+  await pg.mouse.wheel(0, 3000); await pg.waitForTimeout(800); console.log('wheel before play', JSON.stringify(await st()));
+  await pg.click('#play'); await pg.waitForTimeout(10000); console.log('after 10s', JSON.stringify(await st()));
+  await pg.screenshot({ path: `${process.argv[3]}/pt_${mode}_a.png` });
+  await pg.mouse.wheel(0, 3000); await pg.waitForTimeout(500); const s1 = await st(); await pg.waitForTimeout(1500); console.log('wheel during play (should keep its own pace)', JSON.stringify(s1), JSON.stringify(await st()));
+  await pg.click('#pp'); await pg.waitForTimeout(1500); const p1 = await st(); await pg.waitForTimeout(2000); console.log('paused stays', JSON.stringify(p1), JSON.stringify(await st()));
+  const box = await pg.locator('#track').boundingBox(); await pg.mouse.click(box.x + box.width * .5, box.y + box.height / 2); await pg.waitForTimeout(5000);
+  console.log('seek 50%', JSON.stringify(await st())); await pg.screenshot({ path: `${process.argv[3]}/pt_${mode}_b.png` });
+  await pg.mouse.click(box.x + box.width * .999, box.y + box.height / 2); await pg.click('#pp'); await pg.waitForTimeout(6000);
+  console.log('end', JSON.stringify(await st()), 'replay visible', await pg.isVisible('#replay')); await pg.screenshot({ path: `${process.argv[3]}/pt_${mode}_c.png` });
+  console.log('errors', JSON.stringify(errs.slice(0, 5)));
+  await b.close();
+})();

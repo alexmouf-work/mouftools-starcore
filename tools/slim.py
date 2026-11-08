@@ -4,10 +4,10 @@ Textures: every block and planet texture once, at its NATIVE resolution, de-dupl
 WebP. The page upscales each by its whole-number factor (nearest neighbour) and extrudes the gutters itself, so the GPU gets
 exactly the sheet it got before while the wire carries 1/64th of the pixels for a block texture.
 Geometry: every baked model (the Journey's worlds and ship, the Updates' scenes) as quads (24 bytes axis-aligned, 40 otherwise,
-axis records 26 bytes, the rest 42), with the hyperdrive map's systems, deflated and base64'd into .txt (the only byte-exact type served that a
+axis records 26 bytes, the rest 42; positions in 1/128 block, fine enough to keep an overlay's lift (1/16 rounded it away)), with the hyperdrive map's systems, deflated and base64'd into .txt (the only byte-exact type served that a
 browser can fetch and DecompressionStream can inflate).
 
-Usage: slim.py <outdir>      (run in the mock-up folder after job2.py, clean.py and `bake.py job_all.json all`)
+Usage: slim.py <outdir>      (after data.py, pack3-era probes and `bake.py job_all.json all`)
 """
 import json, sys, io, base64, zlib, hashlib, struct, os
 from PIL import Image
@@ -94,9 +94,9 @@ def pack_group(blob, gname):
             A = ax([p3[i] - p0[i] for i in range(3)]); Bv = ax([p1[i] - p0[i] for i in range(3)])
             if A and Bv and all(abs(p2[i] - (p1[i] + p3[i] - p0[i])) < 1e-3 for i in range(3)) and ax(n):
                 code = A[0] | Bv[0] << 3 | ax(n)[0] << 6 | k << 9
-                a += struct.pack("<3hH2HH3sx4h", *[round(x * 16) for x in p0], code, round(A[1] * 16), round(Bv[1] * 16), T[tid], rgb, *uvq); na += 1
+                a += struct.pack("<3hH2HH3sx4h", *[round(x * 128) for x in p0], code, round(A[1] * 128), round(Bv[1] * 128), T[tid], rgb, *uvq); na += 1
             else:
-                f += struct.pack("<12hH3s4hB3bx", *[round(x * 64) for p in quad for x in p], T[tid], rgb, *uvq, k, *[round(x * 127) for x in n]); nf += 1
+                f += struct.pack("<12hH3s4hB3bx", *[round(x * 128) for p in quad for x in p], T[tid], rgb, *uvq, k, *[round(x * 127) for x in n]); nf += 1
         while bounds and bi < len(bounds): sa.append(na); sf.append(nf); bi += 1
         ao = len(blob); blob += a; fo = len(blob); blob += f
         while len(blob) % 4: blob += b"\0"

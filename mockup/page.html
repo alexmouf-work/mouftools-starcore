@@ -165,6 +165,29 @@ html[data-stage="front"] .speed { opacity: 1; }
   #f-end .copy { background: none; }
 }
 
+
+/* the Journey plays itself: a play button on the hero, then this bar (principal 2026-11-07: "make it play automatically after a button press") */
+html.lock, html.lock body { overflow: hidden; overscroll-behavior: none; }
+.btn { cursor: pointer; background: none; }
+.btn.play { gap: 10px; } .btn.play svg { width: 14px; height: 14px; }
+#player { position: fixed; z-index: 6; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(560px, calc(100vw - 32px));
+  display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 8px; box-sizing: border-box; border-radius: 999px; background: rgba(5,6,15,.62);
+  border: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: opacity .3s ease; }
+#player[hidden] { display: flex; opacity: 0; pointer-events: none; }
+#pp { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--fg); color: var(--bg); display: grid; place-items: center; cursor: pointer; }
+#pp svg { width: 16px; height: 16px; } #pp .i-play { display: none; } #pp.paused .i-play { display: inline; } #pp.paused .i-pause { display: none; }
+#track { position: relative; flex: 1; height: 28px; cursor: pointer; touch-action: none; }
+#track::before { content: ""; position: absolute; left: 0; right: 0; top: 12px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.16); }
+#fill { position: absolute; left: 0; top: 12px; height: 4px; border-radius: 2px; background: var(--accent); width: 0; }
+#ticks i { position: absolute; top: 10px; width: 2px; height: 8px; margin-left: -1px; border-radius: 1px; background: rgba(255,255,255,.45); }
+#ticks i span { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 11px; color: var(--muted); opacity: 0; transition: opacity .15s ease; pointer-events: none; }
+#track:hover #ticks i span { opacity: 1; }
+@media (max-width: 720px) {
+  #player { bottom: auto; top: calc(58px + env(safe-area-inset-top, 0px)); width: calc(100vw - 32px); padding: 6px 12px 6px 6px; }
+  #pp { width: 34px; height: 34px; }
+  #ticks i span { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 
@@ -189,8 +212,7 @@ html[data-stage="front"] .speed { opacity: 1; }
   <div class="panel hero" id="s-earth"><div class="wrap"><div class="copy">
     <h1>Starcore</h1>
     <p class="lede">The most ambitious space mod ever built. Build a custom starship and explore millions of unique worlds.</p>
-    <div class="ctas"><a class="btn primary" href="#download">Download for Fabric</a></div>
-    <p class="hint">Scroll to begin.</p>
+    <div class="ctas"><button class="btn primary play" id="play" type="button"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>Start the journey</button><a class="btn" href="#download">Download for Fabric</a></div>
   </div></div></div>
   <div class="panel" id="e-dive" style="min-height:150svh"></div>
 </section>
@@ -240,9 +262,13 @@ html[data-stage="front"] .speed { opacity: 1; }
   <div class="panel" style="min-height:120svh"></div>
   <div class="panel" id="f-end" style="min-height:120svh"><div class="wrap" style="justify-content:center"><div class="copy" id="download" style="align-items:center;text-align:center;max-width:44rem">
     <h1 class="tagline">What will you discover?</h1>
-    <div class="ctas" style="justify-content:center"><a class="btn primary" href="#download">Download for Fabric</a></div>
+    <div class="ctas" style="justify-content:center"><a class="btn primary" href="#download">Download for Fabric</a><button class="btn" id="replay" type="button">Watch again</button></div>
   </div></div></div>
 </section>
+<div id="player" hidden>
+  <button id="pp" type="button" aria-label="Pause"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-pause" d="M4 3h3v10H4zM9 3h3v10H9z" fill="currentColor"/><path class="i-play" d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg></button>
+  <div id="track" role="slider" tabindex="0" aria-label="Journey" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="fill"></div><div id="ticks"></div></div>
+</div>
 </main>
 
 <main id="updates" role="tabpanel" aria-labelledby="tab-updates" hidden>

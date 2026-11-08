@@ -1,4 +1,4 @@
-# Journey mock-up (v10)
+# Journey mock-up (v11)
 
 The site as a single page: the Journey (Earth → the pad → the solar system and the Stellate cut-away → the hyperdrive map from the
 home system → the Frontier → three surfaces → the end) and the Updates tab (1.0–1.3), with phone layouts of their own.
@@ -42,3 +42,11 @@ Before this pass the page was 10.9 MB with everything inline as base64 PNGs pre-
 ## Deploying (Vercel, starcore.mouftools.com)
 `build.sh`, then `deploy.sh`, then commit `public/`. `vercel.json` at the repo root tells Vercel there is no build and to serve
 `public/` as it stands; a push to main redeploys. Data files are cached for an hour (stale-while-revalidate a day), the page never.
+
+## v11
+- The Journey plays itself after "Start the journey": the page scrolls itself chapter by chapter (`PLAYER.D` in `stages.js`, ~2 min
+  in all, wall-clock), with play/pause, a scrubbable bar with chapter marks, arrow keys and space; manual scrolling is off there.
+- Quad positions are packed at 1/128 block (were 1/16, which rounded every overlay's lift to zero: the connected plating's edges
+  fought their base and the ship looked broken). Overlays lift 2/128.
+- The visibility flood passes leaves and plants, so ground under a canopy is no longer "sealed" and culled (the mini planets' caps).
+- The launch site's hand-built solar panels and tank set are gone; the 1.1 scene is the ship building and lifting off.

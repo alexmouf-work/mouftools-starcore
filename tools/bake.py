@@ -283,7 +283,7 @@ def bake(job, prefix):
                         continue
                     for k, tile in enumerate(tiles):
                         tid = "starcore:block/" + PLATING[fname] + _SUF[tile]; used[tid] = True
-                        lift = 0 if k == 0 else .004 * k   # each overlay a hair proud of the last, or they fight for the same depth
+                        lift = 0 if k == 0 else .0157 * k   # each overlay a hair proud of the last, or they fight for the same depth
                         quad = [face_coord(face, u, v, lift) for u, v in ((0, 0), (0, 1), (1, 1), (1, 0))]
                         meshes["opaque"].append((tid, [(bx + q[0] - .5, by + q[1] - .5, bz + q[2] - .5) for q in quad],
                                                  [(0, 0), (0, 16), (16, 16), (16, 0)], n, "#ffffff"))
@@ -326,7 +326,7 @@ def bake(job, prefix):
                         # base and the overlay are merged into different rectangles, so their triangles interpolate depth differently
                         # and flicker. Lift each further face in a plane a hair along its normal, as the plating overlays are.
                         pk = (tuple(round(x) for x in n), round(sum(quad[0][i] * n[i] for i in range(3)) / 16, 3))
-                        lift = .004 * planes[pk]; planes[pk] += 1
+                        lift = .0157 * planes[pk]; planes[pk] += 1
                         meshes[kind].append((tid, [(bx + p[0] / 16 - .5 + n[0] * lift, by + p[1] / 16 - .5 + n[1] * lift, bz + p[2] / 16 - .5 + n[2] * lift) for p in quad], uvs, n, c))
             steps["opaque"].append(len(meshes["opaque"])); steps["blend"].append(len(meshes["blend"]))
         out[gname] = (meshes, steps)
