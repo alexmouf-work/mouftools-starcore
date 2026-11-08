@@ -51,8 +51,8 @@ function buildCore(D) {
   function layout() {
     const f = st.narrow ? 1.5 : 1;
     R_ = rail([
-      { p: 0, pos: [64 * f, 20, 86 * f], look: [2, 20, 0] },
-      { p: .42, pos: [60 * f, 40, 44 * f], look: [SP.x + 2, SP.y, SP.z] },
+      { p: 0, pos: [44 * f, 34, 58 * f], look: [0, 24, 0] },
+      { p: .42, pos: [SP.x + 30 * f, SP.y + 8, SP.z + 24 * f], look: [SP.x, SP.y, SP.z] },
       { p: .72, pos: [SP.x + 3.5 * f, SP.y + r + 2.2, SP.z + 6 * f], look: [SP.x + (st.narrow ? 0 : -1.2), SP.y + r + .6, SP.z] },
       { p: .82, pos: [SP.x + 3.5 * f, SP.y + r + 2.2, SP.z + 6 * f], look: [SP.x + (st.narrow ? 0 : -1.2), SP.y + r + .6, SP.z] },
       { p: 1, pos: [SP.x + 3.5 * f, SP.y - r - 2.4, SP.z + 6 * f], look: [SP.x + (st.narrow ? 0 : -1.2), SP.y - r - .6, SP.z] }
@@ -117,10 +117,10 @@ function buildEncounters(D) {
   function layout() {
     const f = st.narrow ? 1.5 : 1;
     R_ = rail([
-      { p: 0, pos: [0, 160 * f, 420 * f], look: [0, 0, -120] },
-      { p: .28, pos: [CL.x + 60, 70, CL.z + 190 * f], look: [CL.x, CL.y, CL.z] },
-      { p: .52, pos: [STN.x + 70, STN.y + 70, STN.z + 150 * f], look: [STN.x, STN.y, STN.z] },
-      { p: .76, pos: [AST.x + 90, AST.y + 40, AST.z + 170 * f], look: [AST.x, AST.y, AST.z] },
+      { p: 0, pos: [0, 110 * f, 290 * f], look: [0, 0, -120] },
+      { p: .28, pos: [CL.x + 45, 50, CL.z + 140 * f], look: [CL.x, CL.y, CL.z] },
+      { p: .52, pos: [STN.x + 55, STN.y + 50, STN.z + 110 * f], look: [STN.x, STN.y, STN.z] },
+      { p: .76, pos: [AST.x + 65, AST.y + 30, AST.z + 125 * f], look: [AST.x, AST.y, AST.z] },
       { p: 1, pos: [BH.x + 40, BH.y + 30, BH.z + 260 * f], look: [BH.x, BH.y, BH.z] }
     ]);
   }

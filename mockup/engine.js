@@ -159,6 +159,9 @@ function anchorP(sec, el) {
   const top = sec.getBoundingClientRect().top + scrollY, h = sec.offsetHeight - innerHeight;
   return el ? clamp((el.getBoundingClientRect().top + scrollY - top) / Math.max(1, h)) : 0;
 }
+/* how far back a camera must stand for a subject of half-width rw and half-height rh to fill `fill` of the frame, whichever way the
+   screen is shaped (a portrait phone is limited by its width, a desktop by its height) */
+function fitDist(cam, rw, rh, fill = .8) { const t = Math.tan(cam.fov * Math.PI / 360); return Math.max(rh / (t * fill), rw / (t * cam.aspect * fill)); }
 function rail(stops) {
   stops = stops.slice().sort((a, b) => a.p - b.p);
   return (p, pos, look) => {

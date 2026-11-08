@@ -348,28 +348,34 @@ function buildSite(o = {}) {
   ];
   let P = {}, R_;
   function layout() {
-    const n = st.narrow, f = n ? 1.45 : 1;
+    const n = st.narrow;
+    // framed from the ship's real size and the screen's shape: the hull (9 wide, ~11 tall from the pad) fills ~80% of a desktop's
+    // height, or the width of a phone (principal 2026-11-08: "the starship is super small")
+    const T = [n ? 0 : 2.2, 7, 0], D = fitDist(cam, 6, 6.5, n ? .95 : .8);
+    const at = (dx, dy, dz, k = 1) => { const L = Math.hypot(dx, dy, dz); return [T[0] + dx / L * D * k, T[1] + dy / L * D * k, T[2] + dz / L * D * k]; };
     if (IND) {
       // the ship builds itself, then away: P.l = [start, ship done, ignition, lift]
       P.l = [.02, .5, .6, .68];
       R_ = rail([
-        { p: 0, pos: [-24 * f, 12 * f, -22 * f], look: [-8, 2, -2] },
-        { p: .24, pos: [20 * f, 10 * f, -24 * f], look: [n ? 2 : 4, 3, 0] },
-        { p: .52, pos: [14 * f, 7 * f, -22 * f], look: [n ? 0 : 3, 5, 0] },
-        { p: .68, pos: [16 * f, 4.5 * f, -24 * f], look: [n ? 0 : 2, 6, 0] },
-        { p: 1, pos: [16 * f, 4.5 * f, -24 * f], look: [0, 6, 0] }
+        { p: 0, pos: at(-20, 9, -20, 1.15), look: T },
+        { p: .24, pos: at(18, 6, -22), look: T },
+        { p: .52, pos: at(12, 3, -24), look: T },
+        { p: .68, pos: at(14, 1, -24), look: [T[0], T[1] + 1, 0] },
+        { p: 1, pos: at(14, 1, -24), look: [T[0], T[1] + 1, 0] }
       ]);
       return;
     }
     P.l = ["l-0", "l-1", "l-3", "l-4"].map(id => anchorP(sec, $(id)));
-    // straight down out of Earth's top face, the ship building itself as we come down; the cockpit faces north, so the camera ends on the north side
+    // straight down out of Earth's top face onto the pad, then round to the north side (the cockpit faces north) for most of the build
+    const top = fitDist(cam, 7.5, 7.5, .6);
     R_ = rail([
-      { p: 0, pos: [.4, 46, -1.2], look: [0, 0, 0] },
-      { p: P.l[1] * .45, pos: [6, 30, -14], look: [0, 3, 0] },
-      { p: P.l[1], pos: [14 * f, 8 * f, -24 * f], look: [n ? 0 : 3, 5, 0] },
-      { p: P.l[2], pos: [16 * f, 5 * f, -22 * f], look: [n ? 0 : 3, 5, 0] },
-      { p: P.l[3], pos: [16 * f, 4 * f, -24 * f], look: [n ? 0 : 2, 6, 0] },
-      { p: 1, pos: [16 * f, 4 * f, -24 * f], look: [0, 6, 0] }
+      { p: 0, pos: [.4, top, -1.2], look: [0, 0, 0] },
+      { p: P.l[1] * .22, pos: at(5, 16, -10, 1.25), look: [T[0] * .5, 3, 0] },
+      { p: P.l[1] * .45, pos: at(11, 4, -24), look: T },
+      { p: P.l[1], pos: at(13, 3, -22), look: T },
+      { p: P.l[2], pos: at(14, 2, -22), look: T },
+      { p: P.l[3], pos: at(14, 1, -24), look: [T[0], T[1] + 1, 0] },
+      { p: 1, pos: at(14, 1, -24), look: [T[0], T[1] + 1, 0] }
     ]);
   }
   const look = new V3(), skyEl = $("sky");
@@ -378,7 +384,7 @@ function buildSite(o = {}) {
   function frame(dt, t, p) {
     R_(p, cam.position, look);
     if (IND) machines.forEach((m, i) => m(smooth(i / machines.length * P.l[0], (i + 1) / machines.length * P.l[0], p)));
-    const built = (IND ? smooth(P.l[0], P.l[1], p) : smooth(P.l[1] * .1, P.l[1] * .9, p)) * hull.userData.blocks;
+    const built = (IND ? smooth(P.l[0], P.l[1], p) : smooth(P.l[1] * .12, P.l[1] * .92, p)) * hull.userData.blocks;
     hull.userData.reveal(RM ? hull.userData.blocks : Math.ceil(built));
     builder.userData.armR.rotation.x = built < hull.userData.blocks && built > 0 ? -1.4 + Math.sin(t * 9) * .35 : -.1;
     const lit = p > P.l[2] - .01, lift = smooth(P.l[3], 1, p), climb = Math.pow(lift, 2.1) * 260;
@@ -386,7 +392,7 @@ function buildSite(o = {}) {
     if (lit && !RM) { ship.position.x = Math.sin(t * 43) * .03 * (1 - lift); ship.position.z = Math.cos(t * 37) * .03 * (1 - lift); }
     plumes.forEach((m, i) => { m.visible = lit; m.scale.y = 1 + lift * 1.6; m.position.y = plumeY[i] - lift * 1.4; });
     const f = Math.floor(t * 10) % 8; if (f !== lastFrame) { plumeFrame(f); lastFrame = f; }
-    cam.position.y += climb * .9; look.y += climb;
+    cam.position.y += climb; look.y += climb;     // the camera climbs with the ship, so it stays the size it was on the pad
     cam.position.x += st.px * .5; cam.position.y += st.py * .35;
     cam.lookAt(look); nearFar(cam, look);
     const alt = smooth(.05, .65, lift);
@@ -422,9 +428,9 @@ function buildWorld(key, opts) {
   const look = new V3();
   function layout() {}
   function frame(dt, t, p) {
-    const a = opts.angle + p * 1.6 + (RM ? 0 : t * .02), d = ((st.narrow ? 112 : 80) - p * 10) * (opts.dist || 1);
+    const K = .78, a = opts.angle + p * 1.6 + (RM ? 0 : t * .02), d = ((st.narrow ? 112 : 80) - p * 10) * K * (opts.dist || 1);
     const fc = opts.focus ? opts.focus() : [0, opts.lookY == null ? 6 : opts.lookY, 0];
-    cam.position.set(fc[0] + Math.cos(a) * d, (opts.camY || 16) + p * 4, fc[2] + Math.sin(a) * d);
+    cam.position.set(fc[0] + Math.cos(a) * d, fc[1] + ((opts.camY || 16) - fc[1]) * K + p * 4, fc[2] + Math.sin(a) * d);
     look.set(fc[0], fc[1], fc[2]); cam.position.x += st.px * 1.5; cam.position.y += st.py;
     cam.lookAt(look); nearFar(cam, look);
     const k = RM ? 0 : dt;
