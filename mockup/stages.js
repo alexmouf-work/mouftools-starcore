@@ -820,7 +820,7 @@ function loop() {
   if (document.hidden) return;
   const dt = Math.min(clock.getDelta(), 1 / 20); T += dt;
   // the player keeps wall-clock time (a slow device drops frames, it does not stretch the film); capped so a background tab cannot jump
-  const now = performance.now(); playerTick(Math.min(.25, (now - (loop.last || now)) / 1000)); loop.last = now;
+  const now = performance.now(), rdt = Math.min(.25, (now - (loop.last || now)) / 1000); loop.last = now; playerTick(rdt);
   const V = VIEWS[view], stages = V.stages;
   if (!stages.length) { R.setRenderTarget(null); R.clear(); return; }
   const mid = scrollY + innerHeight * .5;
@@ -828,7 +828,7 @@ function loop() {
   stages.forEach(w => {
     const raw = clamp((scrollY - w.sec.offsetTop) / Math.max(1, w.sec.offsetHeight - innerHeight));
     const v = sp.has(w) ? sp.get(w) : raw;
-    sp.set(w, v + (raw - v) * (RM ? 1 : 1 - Math.exp(-dt * 5)));
+    sp.set(w, v + (raw - v) * (RM ? 1 : 1 - Math.exp(-rdt * 5)));     // real time, like the player: a slow device lags no further behind it
   });
   const w = stages[k], ok = w.ready();
   if (k !== cur || (ok && w.shown !== true)) {
