@@ -110,12 +110,15 @@ def full_opaque(state):
                     return True
     return False
 
-TINT_KIND = {"grass": ("grass_block", "short_grass", "tall_grass", "fern", "large_fern", "sugar_cane", "six_sided_grass", "stargrass", "vine", "pink_petals"),
+TINT_KIND = {"grass": ("grass_block", "short_grass", "tall_grass", "fern", "large_fern", "sugar_cane", "six_sided_grass", "stargrass", "vine", "pink_petals", "bush", "eden_grassy_cloud"),
              "birch": ("birch_leaves",), "spruce": ("spruce_leaves",), "water": ("water",),
              "foliage": ("leaves",)}
+# vanilla draws these untinted whatever their model says: no colour provider is registered for them
+UNTINTED = ("cherry_leaves", "pale_oak_leaves", "azalea", "dead_bush")
 def tint_for(state, tints, block_tints=None, idx=0):
     name = parse_state(state)[0].split(":")[1]
     if block_tints and name in block_tints: return "#" + block_tints[name][min(idx, 1)]
+    if any(u in name for u in UNTINTED): return "#ffffff"
     for kind, keys in TINT_KIND.items():
         if any(k in name for k in keys) and kind in tints: return tints[kind]
     return "#ffffff"

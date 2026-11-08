@@ -78,7 +78,7 @@ function netGeo(key) {
     if (nz > .5) { px = 128 + s(x); py = 128 + s(-y); } else if (nx > .5) { px = 256 + s(-z); py = 128 + s(-y); }
     else if (nz < -.5) { px = 384 + s(-x); py = 128 + s(-y); } else if (nx < -.5) { px = s(z); py = 128 + s(-y); }
     else if (ny > .5) { px = 128 + s(x); py = s(z); } else { px = 256 + s(x); py = s(-z); }
-    U.setXY(i, lerp(r.u0, r.u1, px / 512), lerp(r.v1, r.v0, py / 128));
+    U.setXY(i, lerp(r.u0, r.u1, px / 512), lerp(r.v1, r.v0, py / 256));
   }
   geoCache.set("net:" + key, g);
   return g;

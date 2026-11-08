@@ -65,7 +65,8 @@ x0 = z0 = 16; N = 96
 win = top[z0:z0 + N, x0:x0 + N]; lo = int(np.percentile(win, 5)) - 7; hi = int(win.max()) + 1
 sub = arr[lo:hi + 1, z0:z0 + N, x0:x0 + N]
 keep, out, a = visible(sub, info)
-G["ow"] = group("ow", sub, info, keep, out, a, (N // 2, int(np.median(win)) - lo, N // 2), tints={"grass": "#91bd59", "foliage": "#77ab2f", "water": "#3f76e4"})
+# the patch is forest (the server's /locate: minecraft:forest 0 blocks away): vanilla forest grass and foliage
+G["ow"] = group("ow", sub, info, keep, out, a, (N // 2, int(np.median(win)) - lo, N // 2), tints={"grass": "#79c05a", "foliage": "#59ae30", "birch": "#80a755", "spruce": "#619961", "water": "#3f76e4"})
 print("ow surface y", int(np.median(win)) + o[1])
 # ---- Core: planets in the sky, built by PlanetFeature's own rule (solid: moss r-1.5, dirt r-4, stone with 2% glowstone; hollow: shell of 4,
 # glowstone 6% coal 10% iron 8% cobble 36% stone 40%; a star core at the centre)
@@ -102,6 +103,8 @@ for nm, dump, kw in (("cluster", "enc14", {}), ("asteroids", "enc11", {}), ("sta
     keep, out, a = visible(arr, info)
     ys, zs, xs = np.nonzero(~a)
     c = (int((xs.min() + xs.max()) / 2), int((ys.min() + ys.max()) / 2), int((zs.min() + zs.max()) / 2))
-    G[nm] = group(nm, arr, info, keep, out, a, c, tints={"grass": "#91bd59", "foliage": "#77ab2f", "water": "#3f76e4"}, **kw)
+    # vanilla grass and ferns on the mini planets are not tinted for their planet in the game (space is not a generated world), so
+    # they are left out rather than shown in a colour that is not theirs (principal 2026-11-08)
+    G[nm] = group(nm, arr, info, keep, out, a, c, skip=("minecraft:short_grass", "minecraft:fern", "minecraft:tall_grass"), **kw)
 G["ow"]["drop"] = [[0, -1, 0]]; G["station"]["drop"] = [[0, -1, 0]]; G["cluster"]["fast_leaves"] = True
 json.dump({"groups": G}, open(sys.argv[1], "w"))

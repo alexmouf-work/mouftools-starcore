@@ -171,7 +171,8 @@ html[data-stage="front"] .speed { opacity: 1; }
 
 
 /* the Journey plays itself: a play button on the hero, then this bar (principal 2026-11-07: "make it play automatically after a button press") */
-html.lock, html.lock body { overflow: hidden; overscroll-behavior: none; }
+/* the root only: overflow on body would make it a scroll container and every sticky caption would scroll away with the page */
+html.lock { overflow: hidden; overscroll-behavior: none; }
 .btn { cursor: pointer; background: none; }
 .btn.play { gap: 10px; } .btn.play svg { width: 14px; height: 14px; }
 #player { position: fixed; z-index: 6; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(560px, calc(100vw - 32px));
@@ -184,12 +185,11 @@ html.lock, html.lock body { overflow: hidden; overscroll-behavior: none; }
 #track::before { content: ""; position: absolute; left: 0; right: 0; top: 12px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.16); }
 #fill { position: absolute; left: 0; top: 12px; height: 4px; border-radius: 2px; background: var(--accent); width: 0; }
 #ticks i { position: absolute; top: 10px; width: 2px; height: 8px; margin-left: -1px; border-radius: 1px; background: rgba(255,255,255,.45); }
-#ticks i span { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 11px; color: var(--muted); opacity: 0; transition: opacity .15s ease; pointer-events: none; }
-#track:hover #ticks i span { opacity: 1; }
+#chap { flex: none; width: 11.5em; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 720px) {
   #player { bottom: auto; top: calc(58px + env(safe-area-inset-top, 0px)); width: calc(100vw - 32px); padding: 6px 12px 6px 6px; }
   #pp { width: 34px; height: 34px; }
-  #ticks i span { display: none; }
+  #chap { width: 7.5em; font-size: 11px; }
 }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
@@ -274,6 +274,7 @@ html.lock, html.lock body { overflow: hidden; overscroll-behavior: none; }
 <div id="player" hidden>
   <button id="pp" type="button" aria-label="Pause"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-pause" d="M4 3h3v10H4zM9 3h3v10H9z" fill="currentColor"/><path class="i-play" d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg></button>
   <div id="track" role="slider" tabindex="0" aria-label="Journey" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="fill"></div><div id="ticks"></div></div>
+  <span id="chap" aria-live="off"></span>
 </div>
 </main>
 
@@ -449,7 +450,7 @@ function netGeo(key) {
     if (nz > .5) { px = 128 + s(x); py = 128 + s(-y); } else if (nx > .5) { px = 256 + s(-z); py = 128 + s(-y); }
     else if (nz < -.5) { px = 384 + s(-x); py = 128 + s(-y); } else if (nx < -.5) { px = s(z); py = 128 + s(-y); }
     else if (ny > .5) { px = 128 + s(x); py = s(z); } else { px = 256 + s(x); py = s(-z); }
-    U.setXY(i, lerp(r.u0, r.u1, px / 512), lerp(r.v1, r.v0, py / 128));
+    U.setXY(i, lerp(r.u0, r.u1, px / 512), lerp(r.v1, r.v0, py / 256));
   }
   geoCache.set("net:" + key, g);
   return g;
@@ -1718,7 +1719,7 @@ const PLAYER = { on: false, started: false, t: 0,
 const ppEl = $("pp"), trackEl = $("track"), fillEl = $("fill"), playerEl = $("player");
 const TOTAL = PLAYER.D.reduce((a, b) => a + b, 0);
 function chapterStart(i) { return PLAYER.D.slice(0, i).reduce((a, b) => a + b, 0); }
-$("ticks").innerHTML = PLAYER.names.map((n, i) => `<i style="left:${(chapterStart(i) / TOTAL * 100).toFixed(2)}%"><span>${n}</span></i>`).join("");
+$("ticks").innerHTML = PLAYER.names.map((n, i) => `<i style="left:${(chapterStart(i) / TOTAL * 100).toFixed(2)}%" title="${n}"></i>`).join("");
 function yAt(t) {
   const S = VIEWS.journey.stages, end = document.documentElement.scrollHeight - innerHeight;
   let a = 0;
@@ -1761,6 +1762,7 @@ function playerTick(dt) {
   if (PLAYER.on) { PLAYER.t += dt; if (PLAYER.t >= TOTAL) { PLAYER.t = TOTAL; setPlaying(false); } scrollTo(0, yAt(PLAYER.t)); }
   else if (!PLAYER.started && scrollY !== 0) scrollTo(0, 0);
   const f = PLAYER.t / TOTAL; fillEl.style.width = (f * 100).toFixed(2) + "%"; trackEl.setAttribute("aria-valuenow", Math.round(f * 100));
+  const name = PLAYER.names[chapterOf(PLAYER.t)]; if ($("chap").textContent !== name) { $("chap").textContent = name; trackEl.setAttribute("aria-valuetext", name); }
 }
 resize(); route();
 

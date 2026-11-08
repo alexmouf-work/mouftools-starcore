@@ -50,3 +50,7 @@ Before this pass the page was 10.9 MB with everything inline as base64 PNGs pre-
   fought their base and the ship looked broken). Overlays lift 2/128.
 - The visibility flood passes leaves and plants, so ground under a canopy is no longer "sealed" and culled (the mini planets' caps).
 - The launch site's hand-built solar panels and tank set are gone; the 1.1 scene is the ship building and lifting off.
+- Grass and leaves take what the game gives them there (`ClientLevelTintMixin`): a generated world's `PlanetShade.grass` and leaf shade
+  (`probes/GrassProbe.java`: Rapture #543b3b, Karst #9d497e, geometric #78a0c2), Eden its biome's own (#59c93c / #30bb0b, the grassy
+  cloud included), the Overworld patch vanilla forest (the server's /locate). The mini planets' vanilla grass is left out: the game
+  does not tint it for its planet. Cherry and pale oak leaves are untinted, as in vanilla.

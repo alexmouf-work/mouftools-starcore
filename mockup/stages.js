@@ -761,7 +761,7 @@ const PLAYER = { on: false, started: false, t: 0,
 const ppEl = $("pp"), trackEl = $("track"), fillEl = $("fill"), playerEl = $("player");
 const TOTAL = PLAYER.D.reduce((a, b) => a + b, 0);
 function chapterStart(i) { return PLAYER.D.slice(0, i).reduce((a, b) => a + b, 0); }
-$("ticks").innerHTML = PLAYER.names.map((n, i) => `<i style="left:${(chapterStart(i) / TOTAL * 100).toFixed(2)}%"><span>${n}</span></i>`).join("");
+$("ticks").innerHTML = PLAYER.names.map((n, i) => `<i style="left:${(chapterStart(i) / TOTAL * 100).toFixed(2)}%" title="${n}"></i>`).join("");
 function yAt(t) {
   const S = VIEWS.journey.stages, end = document.documentElement.scrollHeight - innerHeight;
   let a = 0;
@@ -804,6 +804,7 @@ function playerTick(dt) {
   if (PLAYER.on) { PLAYER.t += dt; if (PLAYER.t >= TOTAL) { PLAYER.t = TOTAL; setPlaying(false); } scrollTo(0, yAt(PLAYER.t)); }
   else if (!PLAYER.started && scrollY !== 0) scrollTo(0, 0);
   const f = PLAYER.t / TOTAL; fillEl.style.width = (f * 100).toFixed(2) + "%"; trackEl.setAttribute("aria-valuenow", Math.round(f * 100));
+  const name = PLAYER.names[chapterOf(PLAYER.t)]; if ($("chap").textContent !== name) { $("chap").textContent = name; trackEl.setAttribute("aria-valuetext", name); }
 }
 resize(); route();
 
