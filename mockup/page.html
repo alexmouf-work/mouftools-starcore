@@ -201,7 +201,7 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
 .end .logo { opacity: 0; transform: scale(.94); transition: opacity 1s ease, transform 1.3s cubic-bezier(.2,.8,.2,1); transition-delay: .85s; }
 #w-geometry.on .end .tagline, #w-geometry.on .end .ctas, #w-geometry.on .end .logo { opacity: 1; transform: none; }
 /* beats .dsec h1's gradient and hairline, which otherwise win on specificity */
-#w-geometry h1.logo { margin: 0; font-family: "Tektur", "Arial Black", sans-serif; font-weight: 800; font-variation-settings: "wdth" 125; letter-spacing: .01em;
+:is(.hero, #w-geometry) h1.logo { margin: 0; font-family: "Tektur", "Arial Black", sans-serif; font-weight: 800; font-variation-settings: "wdth" 125; letter-spacing: .01em;
   font-size: clamp(64px, 13vw, 176px); line-height: .9; color: transparent; -webkit-text-fill-color: transparent;
   -webkit-text-stroke: 5px #fff; paint-order: stroke fill;
   background-color: #070a1c;
@@ -216,7 +216,10 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
   background-size: 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 100% 100%, 100% 100%, 100% 100%;
   -webkit-background-clip: text; background-clip: text; animation: drift 40s linear infinite; }
 @keyframes drift { to { background-position: 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 0 0, 0 0, 0 0; } }
-@media (max-width: 720px) { #w-geometry h1.logo { -webkit-text-stroke-width: 3px; } }
+@media (max-width: 720px) { :is(.hero, #w-geometry) h1.logo { -webkit-text-stroke-width: 3px; } }
+/* the landing page wears the same mark (principal 2026-11-12: "show the main logo on the landing page") */
+#journey .hero h1.logo { font-size: clamp(46px, 9.5vw, 132px); line-height: .92; margin-bottom: 4px; }
+@media (max-width: 720px) { #journey .hero h1.logo { font-size: clamp(40px, 13.5vw, 64px); } }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
@@ -240,7 +243,7 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
 <!-- Earth, then down into its top face -->
 <section id="earth" aria-label="Starcore">
   <div class="panel hero" id="s-earth"><div class="wrap"><div class="copy">
-    <h1>Starcore</h1>
+    <h1 class="logo">Starcore</h1>
     <p class="lede">The most ambitious space mod ever built. Build a custom starship and explore millions of unique worlds.</p>
     <div class="ctas"><button class="btn primary play" id="play" type="button"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>Start the journey</button><a class="btn" href="#download">Download for Fabric</a></div>
   </div></div></div>

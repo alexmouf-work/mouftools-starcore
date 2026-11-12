@@ -205,7 +205,7 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
 .end .logo { opacity: 0; transform: scale(.94); transition: opacity 1s ease, transform 1.3s cubic-bezier(.2,.8,.2,1); transition-delay: .85s; }
 #w-geometry.on .end .tagline, #w-geometry.on .end .ctas, #w-geometry.on .end .logo { opacity: 1; transform: none; }
 /* beats .dsec h1's gradient and hairline, which otherwise win on specificity */
-#w-geometry h1.logo { margin: 0; font-family: "Tektur", "Arial Black", sans-serif; font-weight: 800; font-variation-settings: "wdth" 125; letter-spacing: .01em;
+:is(.hero, #w-geometry) h1.logo { margin: 0; font-family: "Tektur", "Arial Black", sans-serif; font-weight: 800; font-variation-settings: "wdth" 125; letter-spacing: .01em;
   font-size: clamp(64px, 13vw, 176px); line-height: .9; color: transparent; -webkit-text-fill-color: transparent;
   -webkit-text-stroke: 5px #fff; paint-order: stroke fill;
   background-color: #070a1c;
@@ -220,7 +220,10 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
   background-size: 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 100% 100%, 100% 100%, 100% 100%;
   -webkit-background-clip: text; background-clip: text; animation: drift 40s linear infinite; }
 @keyframes drift { to { background-position: 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 0 0, 0 0, 0 0; } }
-@media (max-width: 720px) { #w-geometry h1.logo { -webkit-text-stroke-width: 3px; } }
+@media (max-width: 720px) { :is(.hero, #w-geometry) h1.logo { -webkit-text-stroke-width: 3px; } }
+/* the landing page wears the same mark (principal 2026-11-12: "show the main logo on the landing page") */
+#journey .hero h1.logo { font-size: clamp(46px, 9.5vw, 132px); line-height: .92; margin-bottom: 4px; }
+@media (max-width: 720px) { #journey .hero h1.logo { font-size: clamp(40px, 13.5vw, 64px); } }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
@@ -246,7 +249,7 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
 <!-- Earth, then down into its top face -->
 <section id="earth" aria-label="Starcore">
   <div class="panel hero" id="s-earth"><div class="wrap"><div class="copy">
-    <h1>Starcore</h1>
+    <h1 class="logo">Starcore</h1>
     <p class="lede">The most ambitious space mod ever built. Build a custom starship and explore millions of unique worlds.</p>
     <div class="ctas"><button class="btn primary play" id="play" type="button"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>Start the journey</button><a class="btn" href="#download">Download for Fabric</a></div>
   </div></div></div>
@@ -1211,24 +1214,40 @@ function buildCreatures(C) {
   const bySp = {}; C.data.creatures.forEach(c => (bySp[c.species] = bySp[c.species] || []).push(c));
   const pick = Object.keys(bySp).sort(() => Math.random() - .5).slice(0, 8).map(s => bySp[s][Math.random() * bySp[s].length | 0]);
   const plinth = new THREE.MeshLambertMaterial({ color: 0x2a1f44 }), rim = new THREE.MeshBasicMaterial({ color: 0x2be0c8 });
-  let x = 0; const row = [];
+  // spaced wide apart, so the one being shown never has a neighbour cut off at the frame's edge
+  let x = 0; const row = [], box = new THREE.Box3(), size = new V3(), mid = new V3();
   pick.forEach((c, i) => {
     const m = creatureModel(c, tex, C.data.sheet), w = Math.max(.8, c.hitbox[0]), h = c.hitbox[1];
-    const spot = new THREE.Group(); x += (i ? w / 2 : 0); spot.position.x = x; x += w / 2 + 1.1; scene.add(spot);
+    const spot = new THREE.Group(); scene.add(spot);
     const r = Math.max(.7, w * .62), base = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.05, .18, 40), plinth); base.position.y = -.09; spot.add(base);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.02, .015, 6, 64), rim); ring.rotation.x = Math.PI / 2; spot.add(ring);
     const air = c.winged || c.swimmer ? .35 + h * .25 : 0; m.position.y = air; m.userData.air = air; spot.add(m);
+    // its real extent, wings and tails included, and turned any way the turntable turns it: a cylinder round the plinth's axis
+    box.setFromObject(spot); box.getSize(size); box.getCenter(mid);
+    const rh = Math.max(r * 1.05, Math.hypot(Math.max(Math.abs(box.min.x), Math.abs(box.max.x)), Math.max(Math.abs(box.min.z), Math.abs(box.max.z)))) + .08;
+    const top = box.max.y + .12, bot = -.25;
+    x += i ? rh + 9 : 0; spot.position.x = x; x += rh;
     const el = document.createElement("div"); el.className = "dlabel clabel"; el.innerHTML = `<b>${c.epithet} ${c.name}</b>`; labelsEl.appendChild(el);
-    row.push({ spot, m, el, w, h, phase: Math.random() * 6.28 });
+    row.push({ spot, m, el, rh, top, bot, phase: Math.random() * 6.28 });
   });
-  const span = x - 1.1, H = Math.max(...row.map(r => r.h + r.m.userData.air)), Wd = Math.max(...row.map(r => r.w));
   let R_; const look = new V3(), wp = new V3(), tmp = new V3();
   function layout() {
-    // framed so the tallest of tonight's eight stands whole in the frame, plinth and label included
-    // a phone takes them one at a time, above its caption sheet; a desktop shows a few side by side
-    const n = st.narrow, d = n ? Math.max(3.2, fitDist(cam, Wd * .5 + .35, H * .5 + .45, 1)) : Math.max(4.2, fitDist(cam, Wd * .75 + .6, H * .5 + .45, .8));
-    const ly = H * .42, lk = n ? ly - H * .45 - .3 : ly;
-    R_ = rail([{ p: 0, pos: [n ? 0 : -1.2, ly + .9, d], look: [n ? 0 : -1.6, lk, 0] }, { p: 1, pos: [span + (n ? 0 : 1.2), ly + .9, d], look: [span + (n ? 0 : -.4), lk, 0] }]);
+    // Each animal framed ON ITS OWN from its real extent, so nothing overflows: on a desktop into the space right of the caption
+    // card (a region 50% of the width and 72% of the height, centred at x +0.42), on a phone above the caption sheet (90% wide, the
+    // top half). The label sits just under the plinth, inside the same region.
+    const n = st.narrow, t = Math.tan(cam.fov * Math.PI / 360), a = cam.aspect;
+    const fw = n ? .86 : .5, fh = n ? .42 : .7, cxN = n ? 0 : .42, cyN = n ? .3 : .02;
+    const stops = [];
+    row.forEach((r, i) => {
+      const halfH = (r.top - r.bot) / 2 + .18, cy = (r.top + r.bot) / 2 - .08;
+      const d = Math.max(halfH / (t * fh), r.rh / (t * a * fw)) * 1.04, cx = r.spot.position.x;
+      const lk = [cx - cxN * d * t * a, cy - cyN * d * t, 0], k = 1 / Math.hypot(.2, 1);
+      const pos = [lk[0], lk[1] + d * .2 * k, d * k];
+      const s = i / row.length, e = (i + 1) / row.length;
+      stops.push({ p: s + .18 / row.length, pos, look: lk }, { p: e - .18 / row.length, pos, look: lk });
+    });
+    stops[0].p = 0; stops[stops.length - 1].p = 1;
+    R_ = rail(stops);
   }
   function frame(dt, t, p) {
     R_(p, cam.position, look); cam.position.x += st.px * .4; cam.position.y += st.py * .25; cam.lookAt(look);
@@ -1241,10 +1260,10 @@ function buildCreatures(C) {
         else if (P.role === "wing") g.rotation.z = rest.z + Math.sin((t + r.phase) * 7) * .45 * (P.pivot[0] >= 0 ? 1 : -1);
         else if (P.role === "head") g.rotation.y = rest.y + Math.sin(t * .7 + r.phase) * .25;
       });
-      r.spot.getWorldPosition(wp); wp.y -= .25; const q = project(wp, cam, tmp);
+      r.spot.getWorldPosition(wp); wp.y += r.bot; const q = project(wp, cam, tmp);
       const on = !q.behind && q.x > -80 && q.x < innerWidth + 80;
       r.el.style.opacity = on ? "1" : "0"; r.el.classList.toggle("on", on);
-      r.el.style.transform = `translate(${q.x}px, ${q.y + 18}px) translateX(-50%)`;
+      r.el.style.transform = `translate(${q.x}px, ${q.y + 6}px) translateX(-50%)`;
     });
   }
   function show(v) { labelsEl.querySelectorAll(".clabel").forEach(e => e.style.display = v ? "" : "none"); }
