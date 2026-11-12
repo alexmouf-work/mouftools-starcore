@@ -278,14 +278,14 @@ function buildCreatures(C) {
   scene.add(new THREE.HemisphereLight(0xf2ecff, 0x40305a, .95)); const sun = new THREE.DirectionalLight(0xfff4e6, .7); sun.position.set(3, 6, 4); scene.add(sun);
   scene.add(stars(1400, 60, 140, "#f6eeff", { alpha: .8 }));
   const tex = new THREE.Texture(C.img); tex.needsUpdate = true; tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestMipmapLinearFilter; tex.encoding = THREE.sRGBEncoding;
-  // eight different species at random, one of each species' two individuals -- always one in flight (a winged individual) and an
-  // Ambler with a weapon off the Frontier rack (AmblerArms.weapon; melee only, a held crossbow is drawn aimed), the rest drawn freely
+  // eight different species at random, one of each species' two individuals -- always one in flight (a winged individual) and the
+  // Ambler, which is the same one for everyone: chosen once, with its weapon ("held"), and saved in creatures.json (cre/weapons.py)
   const shuf = a => a.map(v => [Math.random(), v]).sort((p, q) => p[0] - q[0]).map(p => p[1]), one = a => a[Math.random() * a.length | 0];
   const bySp = {}; C.data.creatures.forEach(c => (bySp[c.species] = bySp[c.species] || []).push(c));
   const flier = one(C.data.creatures.filter(c => c.winged)), ambler = bySp.ambler && one(bySp.ambler);
   const fixed = [flier, ambler].filter(Boolean), taken = new Set(fixed.map(c => c.species));
   const pick = shuf(fixed.concat(shuf(Object.keys(bySp).filter(sp => !taken.has(sp))).slice(0, 8 - fixed.length).map(sp => one(bySp[sp]))));
-  const W = C.data.weapons || {}, weapon = one(Object.keys(W));
+  const W = C.data.weapons || {};
   const HOP = new Set(["hopper", "roundling", "gulpmaw"]);
   const plinth = new THREE.MeshLambertMaterial({ color: 0x2a1f44 }), rim = new THREE.MeshBasicMaterial({ color: 0x2be0c8 });
   // spaced wide apart, so the one being shown never has a neighbour cut off at the frame's edge
@@ -296,8 +296,8 @@ function buildCreatures(C) {
     const r = Math.max(.7, w * .62), base = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.05, .18, 40), plinth); base.position.y = -.09; spot.add(base);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.02, .015, 6, 64), rim); ring.rotation.x = Math.PI / 2; spot.add(ring);
     const air = c.winged ? .7 + h * .3 : c.swimmer ? .35 + h * .25 : 0; m.position.y = air; m.userData.air = air; spot.add(m);
-    const holding = c === ambler && weapon && m.userData.byName.arm_r;
-    if (holding) heldItem(m.userData.byName.arm_r, W[weapon]);
+    const holding = c.held && W[c.held] && m.userData.byName.arm_r;
+    if (holding) heldItem(m.userData.byName.arm_r, W[c.held]);
     const anim = { fly: !!c.winged, hop: HOP.has(c.species), slither: c.species === "coilback", holding: !!holding,
       vertical: c.traits.some(t => /up and down/.test(t)), speed: c.winged ? 0 : .6 };
     // its real extent through a whole cycle of its motion (wings up and down, legs fore and aft, the weapon's stroke), turned any
