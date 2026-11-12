@@ -1954,6 +1954,9 @@ function makeHS() {
     m4.makeBasis(Rv, Uv, F.clone().negate()); tunnel.quaternion.setFromRotationMatrix(m4); tunnel.position.copy(cam.position);
   }
   // the systems within reach: [dir xyz, deg, cell u0, rgba]; star = {x, y, z, r (ly), col [r,g,b], lum, hole}
+  // a star's halo: the game draws it out to 5x the sphere and hiding 0.7 of what is behind, which on any star near the ship
+  // covered the tunnel (principal 2026-11-12: "the aura around the stars is much too wide"); here 1.8x, hiding half
+  const HALO = 1.8, COVER = .5;
   function place(cam, stars) {
     const reach = 6, list = [];
     for (const s of stars) {
@@ -1961,10 +1964,10 @@ function makeHS() {
       if (d <= s.r || d > reach) continue;
       const fade = smooth(reach, reach * .6, d), deg = Math.max(.22, Math.asin(Math.min(1, s.r / d)) * 180 / Math.PI), dir = [dx / d, dy / d, dz / d];
       if (s.hole) { const disc = deg / .62;
-        list.push([d, dir, Math.max(disc * 4, 1.4), .25, [.42 * fade, .18 * fade, .62 * fade, .42 * .7 * fade]], [d, dir, disc, .5, [0, 0, 0, fade]], [d, dir, disc, .75, [fade, .78 * fade, .52 * fade, fade]]);
+        list.push([d, dir, Math.max(disc * HALO, .9), .25, [.42 * fade, .18 * fade, .62 * fade, .42 * COVER * fade]], [d, dir, disc, .5, [0, 0, 0, fade]], [d, dir, disc, .75, [fade, .78 * fade, .52 * fade, fade]]);
         continue; }
       const k = fade * s.lum, c = s.col;
-      list.push([d, dir, Math.max(deg * 5, 1.6) * (.7 + .5 * s.lum), .25, [c[0] * k, c[1] * k, c[2] * k, .7 * k]],
+      list.push([d, dir, Math.max(deg * HALO, .9) * (.7 + .5 * s.lum), .25, [c[0] * k, c[1] * k, c[2] * k, COVER * k]],
         [d, dir, deg / .92, 0, [(1 - (1 - c[0]) * .35) * fade, (1 - (1 - c[1]) * .35) * fade, (1 - (1 - c[2]) * .35) * fade, fade]]);
     }
     list.sort((a, b) => b[0] - a[0]);       // farthest first: OVER is order-dependent
@@ -1972,12 +1975,23 @@ function makeHS() {
     for (let i = 0; i < n; i++) { const [, d, sz, u0, c] = list[i]; iDir.setXYZ(i, ...d); iSz.setXY(i, sz, u0); iCol.setXYZW(i, ...c); }
     quad.instanceCount = n; iDir.needsUpdate = iSz.needsUpdate = iCol.needsUpdate = true;
   }
-  // sky -> blur -> the bodies and the ship over it, sharp
-  function render(cam, over) {
-    R.getDrawingBufferSize(sizeV); if (rt.width !== sizeV.x || rt.height !== sizeV.y) rt.setSize(sizeV.x, sizeV.y);
+  // the galaxy laid over the warp while one fades into the other
+  const rtG = new THREE.WebGLRenderTarget(1, 1); rtG.texture.encoding = THREE.sRGBEncoding;
+  const fade = new THREE.Scene(), fadeMat = new THREE.ShaderMaterial({ uniforms: { map: { value: rtG.texture }, k: { value: 1 } }, transparent: true, depthTest: false, depthWrite: false,
+    vertexShader: `varying vec2 uv0; void main(){ uv0 = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
+    fragmentShader: `uniform sampler2D map; uniform float k; varying vec2 uv0; void main(){ gl_FragColor = vec4(texture2D(map, uv0).rgb, k); }` });
+  fade.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), fadeMat));
+  // sky -> blur -> the bodies and the ship over it, sharp; then, while k < 1, the galaxy (gScene through gCam) over all of it at 1 - k
+  function render(cam, over, k = 1, gScene, gCam) {
+    R.getDrawingBufferSize(sizeV); if (rt.width !== sizeV.x || rt.height !== sizeV.y) { rt.setSize(sizeV.x, sizeV.y); rtG.setSize(sizeV.x, sizeV.y); }
     R.setRenderTarget(rt); R.setClearColor(0x000000, 1); R.clear(); R.render(sky, cam);
     R.setRenderTarget(null); R.clear(); R.render(post, oc);
-    R.autoClear = false; R.clearDepth(); R.render(over, cam); R.autoClear = true; R.setClearColor(0x000000, 0);
+    R.autoClear = false; R.clearDepth(); R.render(over, cam); R.autoClear = true;
+    if (k < 1 && gScene) {
+      R.setRenderTarget(rtG); R.clear(); R.render(gScene, gCam); R.setRenderTarget(null);
+      fadeMat.uniforms.k.value = 1 - k; R.autoClear = false; R.render(fade, oc); R.autoClear = true;
+    }
+    R.setClearColor(0x000000, 0);
   }
   return { frame, place, render, bodies };
 }
@@ -2053,44 +2067,46 @@ function buildHyper() {
       { p: 0, pos: [x0 + side.x * .6 - dir.x * 1.1, 1.3, z0 + side.z * .6 - dir.z * 1.1], look: [x0, 0, z0] },
       { p: P.h[1] * .25, pos: [x0 - dir.x * 40 * f, 70 * f, z0 - dir.z * 40 * f], look: [x0 + dir.x * 30, 0, z0 + dir.z * 30], ease: t => t * t * t },
       { p: P.h[1] * .75, pos: [R * .05, R * 1.3 * f, R * .25 + R * .7 * f], look: [0, 0, 0] },
-      { p: P.h[1], pos: [x0 - dir.x * 30, 18, z0 - dir.z * 30], look: [x0 + dir.x * 60, 0, z0 + dir.z * 60], ease: t => t * t * (3 - 2 * t) },
-      { p: 1, pos: [dir.x * -40, 6, dir.z * -40], look: [dir.x * 200, 0, dir.z * 200], ease: t => t }
+      // the whole galaxy, held while it fades into the warp (principal 2026-11-12: "fade from the whole galaxy to the warp, without
+      // zooming back in first"): a slow drift back and round, no dive toward home
+      { p: P.h[1], pos: [R * .12, R * 1.38 * f, R * .3 + R * .74 * f], look: [0, 0, 0], ease: t => t },
+      { p: 1, pos: [R * .12, R * 1.38 * f, R * .3 + R * .74 * f], look: [0, 0, 0] }
     ]);
   }
-  const look = new V3(), home = new V3(x0, 0, z0);
-  let jumped = false;
+  const look = new V3(), hlook = new V3(), home = new V3(x0, 0, z0), hcam = new THREE.PerspectiveCamera(55 * 1.25, 1, .02, 200);
+  let k = 0, jumped = false;
   function frame(dt, t, p) {
-    // the jump: a hard cut to hyperspace at the Hyperdrive caption, as the game cuts from the system's sky to the tunnel
-    jumped = p >= P.h[1];
+    // the jump: the whole galaxy fades into hyperspace over the last stretch before the Hyperdrive caption (the game cuts hard; a
+    // page has no ship to sit in, so it fades), then hyperspace alone
+    const f0 = P.h[1] * .88; k = smooth(f0, P.h[1], p); jumped = k > 0;
     // the systems as map cubes only round home: once the camera climbs, the route's every system would draw as a dense track
     stars.visible = holes.visible = p < P.h[1] * .3;
     if (jumped) {
-      const u = (p - P.h[1]) / Math.max(1e-6, 1 - P.h[1]);
+      const u = (p - f0) / Math.max(1e-6, 1 - f0), cam = hcam;
       // a stretch of the course 2,685 light years out (home sits on an arm's empty trailing edge, where nothing passes for the first
       // few light years); typical of the route: eight systems within 2.5 ly over the four light years flown at Frontier's 0.5 ly/s
       cam.position.copy(home).addScaledVector(dir, 2685 + 4 * u); cam.position.y = .05;
       cam.position.addScaledVector(side, st.px * .02); cam.position.y += st.py * .015;
       look.copy(cam.position).add(dir); cam.lookAt(look);
-      cam.fov = 55 * 1.25; cam.near = .02; cam.far = 200; cam.updateProjectionMatrix();
       rig.position.copy(cam.position); rig.quaternion.copy(cam.quaternion); rig.visible = true;
       shipM.rotation.z = Math.sin(t * .8) * .05;
       hs.frame(t, cam, dir); hs.place(cam, near);
-      capSwap(cap, 1, items);
-      return;
+      if (k >= 1) { capSwap(cap, 1, items); return; }
     }
-    if (cam.fov !== 55) { cam.fov = 55; cam.updateProjectionMatrix(); }
     R_(p, cam.position, look);
     cam.position.x += st.px * 2 * smooth(0, .1, p); cam.position.y += st.py * 1.5 * smooth(0, .1, p);
     cam.lookAt(look);
     cam.near = .02; cam.far = 20000; cam.updateProjectionMatrix();
-    rig.position.copy(cam.position); rig.quaternion.copy(cam.quaternion);
-    shipM.rotation.z = Math.sin(t * .8) * .05;
-    rig.visible = p > P.h[1] * .97;
+    rig.visible = jumped;
     const d = cam.position.distanceTo(homeGlow.position);
     homeGlow.scale.setScalar(Math.max(.5, d * .03)); homeGlow.material.opacity = .75 * (1 - smooth(.06, P.h[1] * .3, p));
     capSwap(cap, stepIndex(p, [0, P.h[1]]), items);
   }
-  function render() { if (jumped) hs.render(cam, over); else LENS.render(scene, cam); }
+  function render() {
+    if (!jumped) { LENS.render(scene, cam); return; }
+    if (hcam.aspect !== cam.aspect) { hcam.aspect = cam.aspect; hcam.updateProjectionMatrix(); }
+    hs.render(hcam, over, k, scene, cam);
+  }
   return { sec, scene, cam, layout, frame, render, sky: "hyper" };
 }
 
