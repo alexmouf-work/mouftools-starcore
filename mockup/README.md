@@ -67,3 +67,9 @@ Before this pass the page was 10.9 MB with everything inline as base64 PNGs pre-
 - Start pressed early reads "Loading..." and plays the moment the rest lands.
 - Measured (`heroprobe.js`, iPhone, 4x CPU, 4G): opening shot ~2.0 s, everything ~4.7 s; before, nothing until ~4.4 s. On slow 3G
   (`earlyplay.js`): opening shot 2.4 s, everything ~15 s.
+
+## v17
+- Updates: 1.3 The Creatures Update (eight different species at random per visit, from 30 the mod's generator built; drawn as vanilla
+  draws a ModelPart tree; named "<epithet> <species>"), Encounters renumbered 1.4.
+- Journey ~58 s (`PLAYER.D`), no camera hold past ~1 s.
+- The ending: the banner is up as its chapter starts, then the Starcore wordmark fades in above it (Tektur, starry fill, white outline).

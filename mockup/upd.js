@@ -3,7 +3,8 @@
    station) and the sky planets PlanetFeature builds, baked and packed like the Journey's (see quadGeo), on the same texture sheet. */
 let UPD = null;
 function updLoad() {
-  if (!UPD) UPD = Promise.all([getOk("updates.json").then(r => r.json()), inflate("updates.txt")]).then(([meta, bin]) => quadPack(meta, bin));
+  if (!UPD) UPD = Promise.all([getOk("updates.json").then(r => r.json()), inflate("updates.txt"), getOk("creatures.json").then(r => r.json()), loadImg("creatures.webp")])
+    .then(([meta, bin, cj, cimg]) => Object.assign(quadPack(meta, bin), { creatures: { data: cj, img: cimg } }));
   return UPD;
 }
 function updMesh(D, gname, mats) { return quadMesh(D, gname, mats); }
@@ -131,4 +132,104 @@ function buildEncounters(D) {
     rocks.rotation.y = (RM ? 0 : t) * .01;
   }
   return { sec, scene, cam, layout, frame, sky: "hyper" };
+}
+
+/* ---- 1.3 The Creatures Update: eight animals the mod's own generator built (com.starcore.entity.creature.gen, through the repo's
+   creature_view harness), eight different species picked at random on every visit from two individuals of each, each from a
+   real world of this galaxy and named for it as the game names it (SpeciesEpithet: "Qijafonian Grazer"). ----
+   Drawn exactly as vanilla draws a ModelPart tree: per part translate(pivot) then Rz·Ry·Rx, boxes unwrapped by the box-UV table
+   (mobmodel.face_rects, the same one the game's Cube uses, mirror included), the whole model through scale(-1, -1, 1) / 16 with
+   y = 24 on the ground. Tails sway as the game's idle does (cos(age x 0.2) x 0.15); wings beat on the fliers. */
+const AX = { X: 0, Y: 1, Z: 2 };
+function faceRects(size, uv, mirror) {
+  const [w, h, d] = size, [u, v] = uv;
+  const F = { up: [[u + d, v, w, d], [0, 1], [2, -1], [1, -1]], down: [[u + d + w, v, w, d], [0, 1], [2, 1], [1, 1]],
+    west: [[u, v + d, d, h], [2, -1], [1, 1], [0, -1]], north: [[u + d, v + d, w, h], [0, 1], [1, 1], [2, -1]],
+    east: [[u + d + w, v + d, d, h], [2, 1], [1, 1], [0, 1]], south: [[u + 2 * d + w, v + d, w, h], [0, -1], [1, 1], [2, 1]] };
+  if (mirror) {
+    const we = F.west, ea = F.east; F.west = [ea[0], we[1], we[2], we[3]]; F.east = [we[0], ea[1], ea[2], ea[3]];
+    ["up", "down", "north", "south"].forEach(n => { const f = F[n]; F[n] = [f[0], [f[1][0], -f[1][1]], f[2], f[3]]; });
+  }
+  return F;
+}
+function creatureModel(c, tex, sheet) {
+  const [cx, cy, cw, ch] = c.cell, [TW, TH] = c.texture, [SW, SH] = sheet;
+  const UV = (u, v) => [(cx + u / TW * cw) / SW, 1 - (cy + v / TH * ch) / SH];
+  const mat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, alphaTest: .5 });
+  const root = new THREE.Group(), parts = {};
+  c.parts.forEach(p => {
+    const g = new THREE.Group(); g.position.set(...p.pivot);
+    g.rotation.set(...p.rot.map(a => a * Math.PI / 180), "ZYX"); g.userData = { p, rest: g.rotation.clone() };
+    const pos = [], uv = [], idx = [];
+    (p.boxes || []).forEach(b => {
+      const lo = b.origin, hi = [0, 1, 2].map(i => b.origin[i] + b.size[i]);
+      Object.values(faceRects(b.size, b.uv, !!p.mirror)).forEach(([rect, ua, va, n]) => {
+        const corner = lo.slice(); corner[n[0]] = n[1] > 0 ? hi[n[0]] : lo[n[0]];
+        if (ua[1] < 0) corner[ua[0]] = hi[ua[0]]; if (va[1] < 0) corner[va[0]] = hi[va[0]];
+        const du = [0, 0, 0], dv = [0, 0, 0]; du[ua[0]] = ua[1] * b.size[ua[0]]; dv[va[0]] = va[1] * b.size[va[0]];
+        const q = [corner, corner.map((x, i) => x + du[i]), corner.map((x, i) => x + du[i] + dv[i]), corner.map((x, i) => x + dv[i])];
+        const [u0, v0, rw, rh] = rect, t = [UV(u0, v0), UV(u0 + rw, v0), UV(u0 + rw, v0 + rh), UV(u0, v0 + rh)];
+        const base = pos.length / 3; q.forEach(pt => pos.push(...pt)); t.forEach(tt => uv.push(...tt));
+        idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      });
+    });
+    if (pos.length) {
+      const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals();
+      g.add(new THREE.Mesh(geo, mat));
+    }
+    parts[p.name] = g;
+  });
+  c.parts.forEach(p => (p.parent && parts[p.parent] ? parts[p.parent] : root).add(parts[p.name]));
+  const model = new THREE.Group(); root.scale.set(-1 / 16, -1 / 16, 1 / 16); root.position.y = 24 / 16; model.add(root);
+  model.userData = { parts: Object.values(parts), c };
+  return model;
+}
+function buildCreatures(C) {
+  const sec = $("u-cr"), scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(36, 1, .05, 500);
+  scene.add(new THREE.HemisphereLight(0xf2ecff, 0x40305a, .95)); const sun = new THREE.DirectionalLight(0xfff4e6, .7); sun.position.set(3, 6, 4); scene.add(sun);
+  scene.add(stars(1400, 60, 140, "#f6eeff", { alpha: .8 }));
+  const tex = new THREE.Texture(C.img); tex.needsUpdate = true; tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestMipmapLinearFilter; tex.encoding = THREE.sRGBEncoding;
+  // eight different species, at random, one of each species' two individuals
+  const bySp = {}; C.data.creatures.forEach(c => (bySp[c.species] = bySp[c.species] || []).push(c));
+  const pick = Object.keys(bySp).sort(() => Math.random() - .5).slice(0, 8).map(s => bySp[s][Math.random() * bySp[s].length | 0]);
+  const plinth = new THREE.MeshLambertMaterial({ color: 0x2a1f44 }), rim = new THREE.MeshBasicMaterial({ color: 0x2be0c8 });
+  let x = 0; const row = [];
+  pick.forEach((c, i) => {
+    const m = creatureModel(c, tex, C.data.sheet), w = Math.max(.8, c.hitbox[0]), h = c.hitbox[1];
+    const spot = new THREE.Group(); x += (i ? w / 2 : 0); spot.position.x = x; x += w / 2 + 1.1; scene.add(spot);
+    const r = Math.max(.7, w * .62), base = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.05, .18, 40), plinth); base.position.y = -.09; spot.add(base);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.02, .015, 6, 64), rim); ring.rotation.x = Math.PI / 2; spot.add(ring);
+    const air = c.winged || c.swimmer ? .35 + h * .25 : 0; m.position.y = air; m.userData.air = air; spot.add(m);
+    const el = document.createElement("div"); el.className = "dlabel clabel"; el.innerHTML = `<b>${c.epithet} ${c.name}</b>`; labelsEl.appendChild(el);
+    row.push({ spot, m, el, w, h, phase: Math.random() * 6.28 });
+  });
+  const span = x - 1.1, H = Math.max(...row.map(r => r.h + r.m.userData.air)), Wd = Math.max(...row.map(r => r.w));
+  let R_; const look = new V3(), wp = new V3(), tmp = new V3();
+  function layout() {
+    // framed so the tallest of tonight's eight stands whole in the frame, plinth and label included
+    // a phone takes them one at a time, above its caption sheet; a desktop shows a few side by side
+    const n = st.narrow, d = n ? Math.max(3.2, fitDist(cam, Wd * .5 + .35, H * .5 + .45, 1)) : Math.max(4.2, fitDist(cam, Wd * .75 + .6, H * .5 + .45, .8));
+    const ly = H * .42, lk = n ? ly - H * .45 - .3 : ly;
+    R_ = rail([{ p: 0, pos: [n ? 0 : -1.2, ly + .9, d], look: [n ? 0 : -1.6, lk, 0] }, { p: 1, pos: [span + (n ? 0 : 1.2), ly + .9, d], look: [span + (n ? 0 : -.4), lk, 0] }]);
+  }
+  function frame(dt, t, p) {
+    R_(p, cam.position, look); cam.position.x += st.px * .4; cam.position.y += st.py * .25; cam.lookAt(look);
+    row.forEach((r, i) => {
+      r.m.rotation.y = .5 + Math.sin(t * .35 + r.phase) * .55;                 // each turns slowly on its plinth
+      if (r.m.userData.air) r.m.position.y = r.m.userData.air + Math.sin(t * 1.6 + r.phase) * .06;
+      r.m.userData.parts.forEach(g => {
+        const P = g.userData.p, rest = g.userData.rest;
+        if (P.role === "tail") g.rotation.y = rest.y + Math.cos((t + r.phase) * 4) * .15;
+        else if (P.role === "wing") g.rotation.z = rest.z + Math.sin((t + r.phase) * 7) * .45 * (P.pivot[0] >= 0 ? 1 : -1);
+        else if (P.role === "head") g.rotation.y = rest.y + Math.sin(t * .7 + r.phase) * .25;
+      });
+      r.spot.getWorldPosition(wp); wp.y -= .25; const q = project(wp, cam, tmp);
+      const on = !q.behind && q.x > -80 && q.x < innerWidth + 80;
+      r.el.style.opacity = on ? "1" : "0"; r.el.classList.toggle("on", on);
+      r.el.style.transform = `translate(${q.x}px, ${q.y + 18}px) translateX(-50%)`;
+    });
+  }
+  function show(v) { labelsEl.querySelectorAll(".clabel").forEach(e => e.style.display = v ? "" : "none"); }
+  return { sec, scene, cam, layout, frame, show, sky: "front" };
 }

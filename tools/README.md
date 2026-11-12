@@ -14,6 +14,9 @@ checkout of `alexmouf-work/starcore` (default `../starcore`, or set `STARCORE_AS
 - `pack_quads.py out.quads.json pack` — packs a bake into `pack.bin` + `pack.json`: axis-aligned quads in 24 bytes, the rest in 40.
   The page expands them and tiles merged faces with `fract()`.
 - `clean.py job_all.json` — drops loose blocks before the bake: clumps a crop window cut off (trees, floating shapes) and strays.
+- `creatures_export.py <starcore> <worlds.tsv> <epithets.tsv> <out>` — the Creatures Update's animals: two individuals of each species
+  built by the mod's own generator (`scripts/creatures/creature_view.py`'s harness), each from a real world and named by
+  `SpeciesEpithet` (`probes/EpithetProbe.java`); skins on one sheet, body plans as JSON. The page picks eight species at random.
 - `slim.py outdir` — what ships: textures at native size, de-duplicated, lossless WebP (the page upscales them); every baked model as
   deflated quads (26/42-byte records, merged faces tiled); the galaxy's systems in the same blob. ~3 MB in place of 15.5.
 - `dump_encounters.sh -f <spec>` — builds encounters headless (two mini planets, a mini cluster, an asteroid field, Lab and Frontier

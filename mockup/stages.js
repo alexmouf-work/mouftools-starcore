@@ -192,12 +192,12 @@ function buildSystem() {
       { p: P.c[0] * .82, pos: [ST.x + 7, ST.y + 6, ST.z + 18 * far], look: [ST.x, ST.y, ST.z] },
       { p: P.c[0], pos: [G.x - (n ? 0 : .9), G.y + (n ? .5 : .1), G.z + (n ? 4.4 : 3.2)], look: [G.x - (n ? 0 : 1.15), G.y - (n ? .9 : 0), G.z] },
       { p: P.c[1], ...close(top.p.position, top.up, -1) },
-      { p: P.c[1] + (P.c[2] - P.c[1]) * .3, ...close(top.p.position, top.up, -1) },
+      { p: P.c[1] + (P.c[2] - P.c[1]) * .2, ...close(top.p.position, top.up, -1) },
       { p: (P.c[1] + P.c[2]) * .5 + P.c[2] * .0, pos: [coreW.x - (n ? 0 : .25), coreW.y, coreW.z + (n ? 1.5 : 1.0)], look: [coreW.x - (n ? 0 : .3), coreW.y - (n ? .25 : 0), coreW.z] },
       { p: P.c[2], ...close(bot.p.position, bot.up, -1) },
-      { p: P.c[2] + (P.c[3] - P.c[2]) * .4, ...close(bot.p.position, bot.up, -1) },
+      { p: P.c[2] + (P.c[3] - P.c[2]) * .25, ...close(bot.p.position, bot.up, -1) },
       { p: P.c[3], ...close(js.pos, js.pos, -1, 1.45) },
-      { p: P.c[3] + (P.out - P.c[3]) * .55, ...close(js.pos, js.pos, -1, 1.45) },
+      { p: P.c[3] + (P.out - P.c[3]) * .3, ...close(js.pos, js.pos, -1, 1.45) },
       { p: P.out, pos: [ST.x + 10, ST.y + 9, ST.z + 30 * far], look: [ST.x, ST.y, ST.z] },
       { p: P.out + (1 - P.out) * .45, pos: [0, 240, 400], look: [0, 0, 0] },
       { p: 1, pos: [0, 2600, 4400], look: [0, 0, 0], ease: t => t * t }
@@ -733,8 +733,8 @@ function ensureUpdates() {
   U.loading = true; loadEl.hidden = false; loadEl.textContent = "Loading…";
   updLoad().then(D => {
     U.stages = [lazy("u-10", "site", () => buildCore(D)), lazy("u-11", "site", () => buildSite({ sec: "u-11", industry: true })),
-      lazy("u-12", "front", () => buildFrontierShow()), lazy("u-13", "hyper", () => buildEncounters(D))];
-    U.names = ["site", "site", "front", "hyper"]; U.fade = [null, "#000", "#000", "#000"];
+      lazy("u-12", "front", () => buildFrontierShow()), lazy("u-cr", "front", () => buildCreatures(D.creatures)), lazy("u-13", "hyper", () => buildEncounters(D))];
+    U.names = ["site", "site", "front", "front", "hyper"]; U.fade = [null, "#000", "#000", "#000", "#000"];
     U.ready = true; loadEl.hidden = true;
     if (view === "updates") { cur = -1; resize(); }
   }).catch(err => { loadEl.textContent = "Could not load this tab's scenes."; console.error(err); U.loading = false; });
@@ -764,7 +764,9 @@ addEventListener("hashchange", route);
    It drives the page's own scroll position, so every scene, caption and hand-over runs exactly as it was built. Each chapter runs
    from its section's top to the next section's top (the hand-over included). Manual scrolling is off on the Journey. */
 const PLAYER = { on: false, started: false, t: 0,
-  D: [7, 22, 36, 18, 13, 10, 10, 10, 11],          // seconds a chapter: Earth, the starship, the system, the galaxy, the Frontier, three worlds, the end
+  // seconds a chapter: Earth, the starship, the system, the galaxy, the Frontier, three worlds, the end (~58 s in all; principal
+  // 2026-11-12: "accelerate the entire journey process, and don't stop on things for more than 1 second")
+  D: [4, 9, 15, 8, 6, 4, 4, 4, 4],
   names: ["Earth", "Your starship", "The solar system", "The galaxy", "The Frontier", "Hostile worlds", "Rapture worlds", "Eden", "What will you discover?"] };
 const ppEl = $("pp"), trackEl = $("track"), fillEl = $("fill"), playerEl = $("player");
 const TOTAL = PLAYER.D.reduce((a, b) => a + b, 0);
@@ -838,6 +840,7 @@ function loop() {
     stages.forEach((o, i) => i !== k && o.show(false) && 0);
     stages.forEach((o, i) => { if (i !== k) o.shown = false; });
     cur = k; HTML.dataset.stage = V.names[k];
+    $("w-geometry").classList.toggle("on", view === "journey" && k === stages.length - 1);
     skyEl.className = w.sky === "world" ? "" : w.sky || "";
     if (ok) { w.show(true); w.shown = true; }
   }

@@ -11,7 +11,7 @@ const { chromium, devices } = require('playwright');
   await pg.click('#play'); await pg.waitForTimeout(500); await pg.click('#pp');
   for (const s of list.split(',')) {
     const box = await pg.locator('#track').boundingBox();
-    await pg.mouse.click(box.x + box.width * (+s / 137), box.y + box.height / 2); await pg.waitForTimeout(6000);
+    await pg.mouse.click(box.x + box.width * (+s / 58), box.y + box.height / 2); await pg.waitForTimeout(6000);
     await pg.screenshot({ path: `${out}/${prefix}_${s}.png`, timeout: 120000 });
   }
   console.log(prefix, 'errors', JSON.stringify(errs.slice(0, 5)));

@@ -191,6 +191,33 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
   #chap { width: 7.5em; font-size: 11px; }
 }
 
+
+/* the ending (principal 2026-11-12): the banner rises in at once, then the wordmark fades in above it, drawn in the banner's own
+   face (Tektur, wide, heavy) with a starry-sky fill and a thick white outline */
+.copy.end { align-items: center; text-align: center; max-width: 60rem; gap: 14px; }
+.end .tagline { font-family: "Tektur", "Arial Black", sans-serif; font-weight: 800; font-variation-settings: "wdth" 125; margin: 0; }
+.end .tagline, .end .ctas { opacity: 0; transform: translateY(26px); transition: opacity .6s var(--ease), transform .8s cubic-bezier(.2,.8,.2,1); }
+.end .ctas { transition-delay: .25s; }
+.end .logo { opacity: 0; transform: scale(.94); transition: opacity 1s ease, transform 1.3s cubic-bezier(.2,.8,.2,1); transition-delay: .85s; }
+#w-geometry.on .end .tagline, #w-geometry.on .end .ctas, #w-geometry.on .end .logo { opacity: 1; transform: none; }
+/* beats .dsec h1's gradient and hairline, which otherwise win on specificity */
+#w-geometry h1.logo { margin: 0; font-family: "Tektur", "Arial Black", sans-serif; font-weight: 800; font-variation-settings: "wdth" 125; letter-spacing: .01em;
+  font-size: clamp(64px, 13vw, 176px); line-height: .9; color: transparent; -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 5px #fff; paint-order: stroke fill;
+  background-color: #070a1c;
+  background-image:
+    radial-gradient(1.6px 1.6px at 12px 18px, #fff 98%, transparent), radial-gradient(1px 1px at 47px 66px, #dfe8ff 98%, transparent),
+    radial-gradient(1.2px 1.2px at 83px 31px, #fff 98%, transparent), radial-gradient(1px 1px at 104px 92px, #ffe9cf 98%, transparent),
+    radial-gradient(2px 2px at 131px 54px, #fff 98%, transparent), radial-gradient(1px 1px at 21px 101px, #cfe0ff 98%, transparent),
+    radial-gradient(1.3px 1.3px at 66px 9px, #fff 98%, transparent), radial-gradient(1px 1px at 150px 120px, #fff 98%, transparent),
+    radial-gradient(ellipse 60% 70% at 30% 40%, rgba(124,92,255,.55), transparent 70%),
+    radial-gradient(ellipse 50% 60% at 78% 62%, rgba(43,224,200,.35), transparent 70%),
+    linear-gradient(160deg, #0b1030, #1a0f3a 55%, #070a1c);
+  background-size: 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 100% 100%, 100% 100%, 100% 100%;
+  -webkit-background-clip: text; background-clip: text; animation: drift 40s linear infinite; }
+@keyframes drift { to { background-position: 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 160px 130px, 0 0, 0 0, 0 0; } }
+@media (max-width: 720px) { #w-geometry h1.logo { -webkit-text-stroke-width: 3px; } }
+
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 
@@ -262,11 +289,12 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
 <section id="w-rapture" class="world" aria-label="Rapture worlds"><div class="panel tall" style="min-height:240svh"><div class="sticky"><div class="wrap"><div class="cap wcard" id="rapture-card"></div></div></div></div></section>
 <section id="w-eden" class="world" aria-label="Eden"><div class="panel tall" style="min-height:240svh"><div class="sticky"><div class="wrap"><div class="cap wcard" id="eden-card"></div></div></div></div></section>
 <section id="w-geometry" class="world dsec" aria-label="What will you discover?">
-  <div class="panel" style="min-height:120svh"></div>
-  <div class="panel" id="f-end" style="min-height:120svh"><div class="wrap" style="justify-content:center"><div class="copy" id="download" style="align-items:center;text-align:center;max-width:44rem">
-    <h1 class="tagline">What will you discover?</h1>
+  <!-- the banner is up as soon as this chapter starts; the wordmark fades in above it once the banner has settled -->
+  <div class="panel tall" style="min-height:170svh"><div class="sticky"><div class="wrap" style="justify-content:center"><div class="copy end" id="download">
+    <h1 class="logo">Starcore</h1>
+    <h2 class="tagline">What will you discover?</h2>
     <div class="ctas" style="justify-content:center"><a class="btn primary" href="#download">Download for Fabric</a><button class="btn" id="replay" type="button">Watch again</button></div>
-  </div></div></div>
+  </div></div></div></div>
 </section>
 <div id="player" hidden>
   <button id="pp" type="button" aria-label="Pause"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-pause" d="M4 3h3v10H4zM9 3h3v10H9z" fill="currentColor"/><path class="i-play" d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg></button>
@@ -285,7 +313,8 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
       <li><a href="#u-10"><span>1.0</span><b>The Core Update</b></a></li>
       <li><a href="#u-11"><span>1.1</span><b>The Industry Update</b></a></li>
       <li><a href="#u-12"><span>1.2</span><b>The Frontier Update</b></a></li>
-      <li><a href="#u-13"><span>1.3</span><b>The Encounters Update</b></a></li>
+      <li><a href="#u-cr"><span>1.3</span><b>The Creatures Update</b></a></li>
+      <li><a href="#u-13"><span>1.4</span><b>The Encounters Update</b></a></li>
     </ul>
   </div></div></div>
 </section>
@@ -304,9 +333,14 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
     <div class="cap"><span class="ver-num">1.2</span><span class="cap-name">The Frontier Update</span><p class="cap-text">A galaxy of unique planets to explore.</p></div>
   </div></div></div>
 </section>
+<section id="u-cr" class="ver" aria-label="The Creatures Update">
+  <div class="panel tall" style="min-height:300svh"><div class="sticky"><div class="wrap">
+    <div class="cap"><span class="ver-num">1.3</span><span class="cap-name">The Creatures Update</span><p class="cap-text">Every world grows its own wildlife. No two are alike.</p></div>
+  </div></div></div>
+</section>
 <section id="u-13" class="ver" aria-label="The Encounters Update">
   <div class="panel tall" style="min-height:300svh"><div class="sticky"><div class="wrap">
-    <div class="cap"><span class="ver-num">1.3</span><span class="cap-name">The Encounters Update</span><p class="cap-text">Space stations, mini planets and black holes in deep space.</p></div>
+    <div class="cap"><span class="ver-num">1.4</span><span class="cap-name">The Encounters Update</span><p class="cap-text">Space stations, mini planets and black holes in deep space.</p></div>
   </div></div></div>
 </section>
 </main>
