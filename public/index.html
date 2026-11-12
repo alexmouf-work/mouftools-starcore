@@ -322,8 +322,8 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
       <li><a href="#u-10"><span>1.0</span><b>The Core Update</b></a></li>
       <li><a href="#u-11"><span>1.1</span><b>The Industry Update</b></a></li>
       <li><a href="#u-12"><span>1.2</span><b>The Frontier Update</b></a></li>
-      <li><a href="#u-cr"><span>1.3</span><b>The Creatures Update</b></a></li>
-      <li><a href="#u-13"><span>1.4</span><b>The Encounters Update</b></a></li>
+      <li><a href="#u-13"><span>1.3</span><b>The Encounters Update</b></a></li>
+      <li><a href="#u-cr"><span>1.4</span><b>The Creatures Update</b></a></li>
     </ul>
   </div></div></div>
 </section>
@@ -342,14 +342,14 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
     <div class="cap"><span class="ver-num">1.2</span><span class="cap-name">The Frontier Update</span><p class="cap-text">A galaxy of unique planets to explore.</p></div>
   </div></div></div>
 </section>
-<section id="u-cr" class="ver" aria-label="The Creatures Update">
-  <div class="panel tall" style="min-height:300svh"><div class="sticky"><div class="wrap">
-    <div class="cap"><span class="ver-num">1.3</span><span class="cap-name">The Creatures Update</span><p class="cap-text">Every world grows its own wildlife. No two are alike.</p></div>
-  </div></div></div>
-</section>
 <section id="u-13" class="ver" aria-label="The Encounters Update">
   <div class="panel tall" style="min-height:300svh"><div class="sticky"><div class="wrap">
-    <div class="cap"><span class="ver-num">1.4</span><span class="cap-name">The Encounters Update</span><p class="cap-text">Space stations, mini planets and black holes in deep space.</p></div>
+    <div class="cap"><span class="ver-num">1.3</span><span class="cap-name">The Encounters Update</span><p class="cap-text">Space stations, mini planets and black holes in deep space.</p></div>
+  </div></div></div>
+</section>
+<section id="u-cr" class="ver" aria-label="The Creatures Update">
+  <div class="panel tall" style="min-height:300svh"><div class="sticky"><div class="wrap">
+    <div class="cap"><span class="ver-num">1.4</span><span class="cap-name">The Creatures Update</span><p class="cap-text">Every world grows its own wildlife. No two are alike.</p></div>
   </div></div></div>
 </section>
 </main>
@@ -2105,8 +2105,8 @@ function ensureUpdates() {
   U.loading = true; loadEl.hidden = false; loadEl.textContent = "Loading…";
   updLoad().then(D => {
     U.stages = [lazy("u-10", "site", () => buildCore(D)), lazy("u-11", "site", () => buildSite({ sec: "u-11", industry: true })),
-      lazy("u-12", "front", () => buildFrontierShow()), lazy("u-cr", "front", () => buildCreatures(D.creatures)), lazy("u-13", "hyper", () => buildEncounters(D))];
-    U.names = ["site", "site", "front", "front", "hyper"]; U.fade = [null, "#000", "#000", "#000", "#000"];
+      lazy("u-12", "front", () => buildFrontierShow()), lazy("u-13", "hyper", () => buildEncounters(D)), lazy("u-cr", "front", () => buildCreatures(D.creatures))];
+    U.names = ["site", "site", "front", "hyper", "front"]; U.fade = [null, "#000", "#000", "#000", "#000"];
     U.ready = true; loadEl.hidden = true;
     if (view === "updates") { cur = -1; resize(); }
   }).catch(err => { loadEl.textContent = "Could not load this tab's scenes."; console.error(err); U.loading = false; });

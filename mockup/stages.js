@@ -733,8 +733,8 @@ function ensureUpdates() {
   U.loading = true; loadEl.hidden = false; loadEl.textContent = "Loading…";
   updLoad().then(D => {
     U.stages = [lazy("u-10", "site", () => buildCore(D)), lazy("u-11", "site", () => buildSite({ sec: "u-11", industry: true })),
-      lazy("u-12", "front", () => buildFrontierShow()), lazy("u-cr", "front", () => buildCreatures(D.creatures)), lazy("u-13", "hyper", () => buildEncounters(D))];
-    U.names = ["site", "site", "front", "front", "hyper"]; U.fade = [null, "#000", "#000", "#000", "#000"];
+      lazy("u-12", "front", () => buildFrontierShow()), lazy("u-13", "hyper", () => buildEncounters(D)), lazy("u-cr", "front", () => buildCreatures(D.creatures))];
+    U.names = ["site", "site", "front", "hyper", "front"]; U.fade = [null, "#000", "#000", "#000", "#000"];
     U.ready = true; loadEl.hidden = true;
     if (view === "updates") { cur = -1; resize(); }
   }).catch(err => { loadEl.textContent = "Could not load this tab's scenes."; console.error(err); U.loading = false; });
