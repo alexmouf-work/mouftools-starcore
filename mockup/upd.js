@@ -139,7 +139,7 @@ function buildEncounters(D) {
    real world of this galaxy and named for it as the game names it (SpeciesEpithet: "Qijafonian Grazer"). ----
    Drawn exactly as vanilla draws a ModelPart tree: per part translate(pivot) then Rz·Ry·Rx, boxes unwrapped by the box-UV table
    (mobmodel.face_rects, the same one the game's Cube uses, mirror included), the whole model through scale(-1, -1, 1) / 16 with
-   y = 24 on the ground. Tails sway as the game's idle does (cos(age x 0.2) x 0.15); wings beat on the fliers. */
+   y = 24 on the ground. Animated by CreatureModel.setupAnim's own formulas, role by role (creaturePose). */
 const AX = { X: 0, Y: 1, Z: 2 };
 function faceRects(size, uv, mirror) {
   const [w, h, d] = size, [u, v] = uv;
@@ -156,10 +156,15 @@ function creatureModel(c, tex, sheet) {
   const [cx, cy, cw, ch] = c.cell, [TW, TH] = c.texture, [SW, SH] = sheet;
   const UV = (u, v) => [(cx + u / TW * cw) / SW, 1 - (cy + v / TH * ch) / SH];
   const mat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, alphaTest: .5 });
-  const root = new THREE.Group(), parts = {};
+  const root = new THREE.Group(), parts = {}, byName = {};
+  c.parts.forEach(p => byName[p.name] = p);
   c.parts.forEach(p => {
     const g = new THREE.Group(); g.position.set(...p.pivot);
-    g.rotation.set(...p.rot.map(a => a * Math.PI / 180), "ZYX"); g.userData = { p, rest: g.rotation.clone() };
+    g.rotation.set(...p.rot.map(a => a * Math.PI / 180), "ZYX");
+    // what CreatureModel's constructor works out per part: its side, whether it is a wing's tip or a spider's planted shin, its length
+    const par = p.parent && byName[p.parent], b0 = (p.boxes || [])[0];
+    g.userData = { p, rest: g.rotation.clone(), restPos: g.position.clone(), side: p.pivot[0] >= 0 ? 1 : -1,
+      tip: !!par && par.role === "wing", planted: !!par && par.role === "limb", len: b0 ? Math.max(1, b0.size[1] / 12) : 1 };
     const pos = [], uv = [], idx = [];
     (p.boxes || []).forEach(b => {
       const lo = b.origin, hi = [0, 1, 2].map(i => b.origin[i] + b.size[i]);
@@ -182,17 +187,106 @@ function creatureModel(c, tex, sheet) {
   });
   c.parts.forEach(p => (p.parent && parts[p.parent] ? parts[p.parent] : root).add(parts[p.name]));
   const model = new THREE.Group(); root.scale.set(-1 / 16, -1 / 16, 1 / 16); root.position.y = 24 / 16; model.add(root);
-  model.userData = { parts: Object.values(parts), c };
+  // the swimmer's (or slitherer's) chain, body first, in the order the tail hangs: each unit's turn is the game's absolute one,
+  // so a parented unit gets the difference from the one before it
+  const chain = [];
+  for (let at = parts.body && c.parts.some(p => p.role === "segment" && p.parent === "body") ? "body" : null; at; ) {
+    chain.push(parts[at]); const nx = c.parts.find(p => p.role === "segment" && p.parent === at); at = nx ? nx.name : null;
+  }
+  model.userData = { parts: Object.values(parts), byName: parts, c, chain };
   return model;
+}
+/* A held item, as the game draws one: item/generated's extruded sprite (front and back faces a pixel apart, an edge face on every
+   opaque pixel that meets a clear one), placed by ItemInHandLayer (translateToHand, then Rx -90, Ry 180, (1, 2, -10)/16) and
+   item/handheld's thirdperson_righthand display (translate (0, 4, 0.5)/16, rotate XYZ (0, -90, 55), scale 0.85, then -8/16 to centre),
+   all in the arm's own frame. CreatureModel.translateToHand's fix first moves this arm's hand to where vanilla's would be. */
+function heldItem(arm, uri) {
+  // until the sprite lands, an unseen 16 x 16 card stands in for it, so the framing already counts the blade
+  const img = new Image(), mesh = new THREE.Mesh(new THREE.PlaneGeometry(16, 16).translate(8, 8, 8), new THREE.MeshBasicMaterial({ visible: false }));
+  mesh.matrixAutoUpdate = false;
+  const b = arm.userData.p.boxes[0], fix = [b.origin[0] + b.size[0] / 2 + 1, b.origin[1] + b.size[1] - 10, b.origin[2] + b.size[2] / 2];
+  const d = Math.PI / 180, M = new THREE.Matrix4(), T = (x, y, z) => new THREE.Matrix4().makeTranslation(x, y, z);
+  M.multiply(T(...fix)).multiply(new THREE.Matrix4().makeRotationX(-90 * d)).multiply(new THREE.Matrix4().makeRotationY(180 * d))
+    .multiply(T(1, 2, -10)).multiply(T(0, 4, .5)).multiply(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(0, -90 * d, 55 * d, "XYZ")))
+    .multiply(new THREE.Matrix4().makeScale(.85, .85, .85)).multiply(T(-8, -8, -8));
+  mesh.matrix.copy(M); arm.add(mesh);
+  img.onload = () => {
+    const cv = document.createElement("canvas"); cv.width = cv.height = 16; const x2 = cv.getContext("2d"); x2.drawImage(img, 0, 0, 16, 16);
+    const A = x2.getImageData(0, 0, 16, 16).data, op = (u, v) => u >= 0 && v >= 0 && u < 16 && v < 16 && A[(v * 16 + u) * 4 + 3] > 127;
+    const pos = [], uv = [], quad = (pts, uvs) => { pts.forEach(p => pos.push(...p)); uvs.forEach(t => uv.push(...t)); };
+    quad([[0, 0, 8.5], [16, 0, 8.5], [16, 16, 8.5], [0, 16, 8.5]], [[0, 0], [1, 0], [1, 1], [0, 1]]);
+    quad([[16, 0, 7.5], [0, 0, 7.5], [0, 16, 7.5], [16, 16, 7.5]], [[1, 0], [0, 0], [0, 1], [1, 1]]);
+    for (let v = 0; v < 16; v++) for (let u = 0; u < 16; u++) {
+      if (!op(u, v)) continue;
+      const x = u, y = 15 - v, c = [(u + .5) / 16, 1 - (v + .5) / 16], C4 = [c, c, c, c];
+      if (!op(u - 1, v)) quad([[x, y, 7.5], [x, y, 8.5], [x, y + 1, 8.5], [x, y + 1, 7.5]], C4);
+      if (!op(u + 1, v)) quad([[x + 1, y, 8.5], [x + 1, y, 7.5], [x + 1, y + 1, 7.5], [x + 1, y + 1, 8.5]], C4);
+      if (!op(u, v - 1)) quad([[x, y + 1, 8.5], [x + 1, y + 1, 8.5], [x + 1, y + 1, 7.5], [x, y + 1, 7.5]], C4);
+      if (!op(u, v + 1)) quad([[x, y, 7.5], [x + 1, y, 7.5], [x + 1, y, 8.5], [x, y, 8.5]], C4);
+    }
+    const idx = []; for (let q = 0; q < pos.length / 12; q++) idx.push(4 * q, 4 * q + 1, 4 * q + 2, 4 * q, 4 * q + 2, 4 * q + 3);
+    const g = mesh.geometry = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx); g.computeVertexNormals();
+    const t = new THREE.Texture(cv); t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.encoding = THREE.sRGBEncoding; t.needsUpdate = true;
+    mesh.material = new THREE.MeshLambertMaterial({ map: t, alphaTest: .5, side: THREE.DoubleSide });
+  };
+  img.src = uri;
+  return mesh;
+}
+/* One frame of CreatureModel.setupAnim, its constants and formulas as the game has them (ages in ticks, angles in radians):
+   s = { age, walk (walkAnimationPos), speed (walkAnimationSpeed), swing (0..1 attack), fly, hop, slither, vertical, holding } */
+const SWING_RATE = .6662, TAU = Math.PI * 2;
+function creaturePose(m, s) {
+  const U = m.userData;
+  U.parts.forEach(g => { g.rotation.copy(g.userData.rest); g.position.copy(g.userData.restPos); });
+  // the wave: a swimmer always, a slitherer at the idle figure (in game its units follow the spine's path; on a plinth there is none)
+  if (U.chain.length > 1 && (U.c.swimmer || s.slither)) {
+    const n = U.chain.length, wave = s.age * .22 + s.walk * .5, sw = U.c.swimmer ? .14 + .28 * Math.min(1, s.speed) : .14;
+    let prev = 0;
+    U.chain.forEach((g, i) => {
+      const turn = Math.sin(wave - i * 1.25) * sw * (i + 1) / (n + 1);
+      if (s.vertical) g.rotation.x += turn - prev; else g.rotation.y += turn - prev; prev = turn;
+    });
+    U.fluke = Math.sin(wave - n * 1.25) * sw * 1.3;
+  }
+  U.parts.forEach(g => {
+    const u = g.userData, P = u.p, ph = (P.phase || 0) * TAU;
+    switch (P.role) {
+      case "hip": {
+        const sweep = -Math.cos(s.walk * SWING_RATE * 2 + ph) * .4 * s.speed, lift = Math.abs(Math.sin(s.walk * SWING_RATE + ph) * .4) * s.speed;
+        g.rotation.y -= u.side * sweep; g.rotation.z -= u.side * lift; break;
+      }
+      case "arm": g.rotation.x += Math.cos(s.walk * SWING_RATE + ph) * 1.0 * s.speed; break;
+      case "leg": if (!u.planted) g.rotation.x += Math.cos(s.walk * SWING_RATE + ph) * 1.4 * s.speed / u.len; break;
+      case "head": g.rotation.y += Math.sin(s.age * .035 + ph) * .3; break;
+      case "tail": g.rotation.y += Math.cos(s.age * .2) * .15; break;
+      case "wing": {
+        const droop = s.fly ? 0 : 1, beat = Math.sin(s.age * .55 - (u.tip ? 1.2 : 0)) * (u.tip ? .4 : .55) * (1 - droop);
+        g.rotation.z += -u.side * beat + u.side * (u.tip ? .55 : 1.15) * droop; break;
+      }
+      case "fin": g.rotation.z += -u.side * Math.sin(s.age * .13) * .12; break;
+      case "fluke": if (s.vertical) g.rotation.x += U.fluke || 0; else g.rotation.y += U.fluke || 0; break;
+    }
+  });
+  // the hand with the weapon is held out a little (vanilla's ITEM pose), and a swing brings it down through the stroke
+  const ar = U.byName.arm_r;
+  if (ar && s.holding) { ar.rotation.x = ar.rotation.x * .5 - Math.PI / 10; ar.rotation.x -= Math.sin(s.swing * Math.PI) * 1.2; }
+  if (s.hop) { const lift = 2 * Math.abs(Math.sin(s.walk)) * s.speed; U.parts.forEach(g => { if (!g.parent || g.parent.parent === m) g.position.y -= lift; }); }
 }
 function buildCreatures(C) {
   const sec = $("u-cr"), scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(36, 1, .05, 500);
   scene.add(new THREE.HemisphereLight(0xf2ecff, 0x40305a, .95)); const sun = new THREE.DirectionalLight(0xfff4e6, .7); sun.position.set(3, 6, 4); scene.add(sun);
   scene.add(stars(1400, 60, 140, "#f6eeff", { alpha: .8 }));
   const tex = new THREE.Texture(C.img); tex.needsUpdate = true; tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestMipmapLinearFilter; tex.encoding = THREE.sRGBEncoding;
-  // eight different species, at random, one of each species' two individuals
+  // eight different species at random, one of each species' two individuals -- always one in flight (a winged individual) and an
+  // Ambler with a weapon off the Frontier rack (AmblerArms.weapon; melee only, a held crossbow is drawn aimed), the rest drawn freely
+  const shuf = a => a.map(v => [Math.random(), v]).sort((p, q) => p[0] - q[0]).map(p => p[1]), one = a => a[Math.random() * a.length | 0];
   const bySp = {}; C.data.creatures.forEach(c => (bySp[c.species] = bySp[c.species] || []).push(c));
-  const pick = Object.keys(bySp).sort(() => Math.random() - .5).slice(0, 8).map(s => bySp[s][Math.random() * bySp[s].length | 0]);
+  const flier = one(C.data.creatures.filter(c => c.winged)), ambler = bySp.ambler && one(bySp.ambler);
+  const fixed = [flier, ambler].filter(Boolean), taken = new Set(fixed.map(c => c.species));
+  const pick = shuf(fixed.concat(shuf(Object.keys(bySp).filter(sp => !taken.has(sp))).slice(0, 8 - fixed.length).map(sp => one(bySp[sp]))));
+  const W = C.data.weapons || {}, weapon = one(Object.keys(W));
+  const HOP = new Set(["hopper", "roundling", "gulpmaw"]);
   const plinth = new THREE.MeshLambertMaterial({ color: 0x2a1f44 }), rim = new THREE.MeshBasicMaterial({ color: 0x2be0c8 });
   // spaced wide apart, so the one being shown never has a neighbour cut off at the frame's edge
   let x = 0; const row = [], box = new THREE.Box3(), size = new V3(), mid = new V3();
@@ -201,14 +295,23 @@ function buildCreatures(C) {
     const spot = new THREE.Group(); scene.add(spot);
     const r = Math.max(.7, w * .62), base = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.05, .18, 40), plinth); base.position.y = -.09; spot.add(base);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.02, .015, 6, 64), rim); ring.rotation.x = Math.PI / 2; spot.add(ring);
-    const air = c.winged || c.swimmer ? .35 + h * .25 : 0; m.position.y = air; m.userData.air = air; spot.add(m);
-    // its real extent, wings and tails included, and turned any way the turntable turns it: a cylinder round the plinth's axis
-    box.setFromObject(spot); box.getSize(size); box.getCenter(mid);
+    const air = c.winged ? .7 + h * .3 : c.swimmer ? .35 + h * .25 : 0; m.position.y = air; m.userData.air = air; spot.add(m);
+    const holding = c === ambler && weapon && m.userData.byName.arm_r;
+    if (holding) heldItem(m.userData.byName.arm_r, W[weapon]);
+    const anim = { fly: !!c.winged, hop: HOP.has(c.species), slither: c.species === "coilback", holding: !!holding,
+      vertical: c.traits.some(t => /up and down/.test(t)), speed: c.winged ? 0 : .6 };
+    // its real extent through a whole cycle of its motion (wings up and down, legs fore and aft, the weapon's stroke), turned any
+    // way the turntable turns it: a cylinder round the plinth's axis
+    box.makeEmpty(); const b1 = new THREE.Box3();
+    for (let k = 0; k < 12; k++) {
+      creaturePose(m, { ...anim, age: k * 1.9, walk: k * .79, swing: k / 11 }); spot.updateMatrixWorld(true);
+      b1.setFromObject(spot); box.union(b1);
+    }
     const rh = Math.max(r * 1.05, Math.hypot(Math.max(Math.abs(box.min.x), Math.abs(box.max.x)), Math.max(Math.abs(box.min.z), Math.abs(box.max.z)))) + .08;
     const top = box.max.y + .12, bot = -.25;
     x += i ? rh + 9 : 0; spot.position.x = x; x += rh;
     const el = document.createElement("div"); el.className = "dlabel clabel"; el.innerHTML = `<b>${c.epithet} ${c.name}</b>`; labelsEl.appendChild(el);
-    row.push({ spot, m, el, rh, top, bot, phase: Math.random() * 6.28 });
+    row.push({ spot, m, el, rh, top, bot, anim, phase: Math.random() * 6.28, walk: 0, swing: 0, next: 2 + Math.random() * 2 });
   });
   let R_; const look = new V3(), wp = new V3(), tmp = new V3();
   function layout() {
@@ -232,14 +335,12 @@ function buildCreatures(C) {
   function frame(dt, t, p) {
     R_(p, cam.position, look); cam.position.x += st.px * .4; cam.position.y += st.py * .25; cam.lookAt(look);
     row.forEach((r, i) => {
-      r.m.rotation.y = .5 + Math.sin(t * .35 + r.phase) * .55;                 // each turns slowly on its plinth
-      if (r.m.userData.air) r.m.position.y = r.m.userData.air + Math.sin(t * 1.6 + r.phase) * .06;
-      r.m.userData.parts.forEach(g => {
-        const P = g.userData.p, rest = g.userData.rest;
-        if (P.role === "tail") g.rotation.y = rest.y + Math.cos((t + r.phase) * 4) * .15;
-        else if (P.role === "wing") g.rotation.z = rest.z + Math.sin((t + r.phase) * 7) * .45 * (P.pivot[0] >= 0 ? 1 : -1);
-        else if (P.role === "head") g.rotation.y = rest.y + Math.sin(t * .7 + r.phase) * .25;
-      });
+      r.m.rotation.y = Math.PI + .75 + Math.sin(t * .35 + r.phase) * .4;        // faces the camera (the renderer's Ry 180), turning slowly
+      if (r.m.userData.air) r.m.position.y = r.m.userData.air + Math.sin(t * 1.6 + r.phase) * (r.anim.fly ? .1 : .06);
+      // the game's clocks: age in ticks, the walk cycle advancing by its speed a tick; an armed Ambler swings every few seconds
+      const A = r.anim; r.walk += A.speed * 20 * dt;
+      if (A.holding) { r.next -= dt; if (r.next < 0) { r.swing = 1e-6; r.next = 2.5 + Math.random() * 2; } if (r.swing > 0) r.swing = r.swing + dt / .3 > 1 ? 0 : r.swing + dt / .3; }
+      creaturePose(r.m, { ...A, age: (t + r.phase) * 20, walk: r.walk, swing: r.swing });
       r.spot.getWorldPosition(wp); wp.y += r.bot; const q = project(wp, cam, tmp);
       const on = !q.behind && q.x > -80 && q.x < innerWidth + 80;
       r.el.style.opacity = on ? "1" : "0"; r.el.classList.toggle("on", on);
