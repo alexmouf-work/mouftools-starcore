@@ -1835,6 +1835,153 @@ function buildWorld(key, opts) {
 /* The galaxy exactly as the hyperdrive menu draws it (GalaxyRaster): every system a cube in its PullSpectrum colour, flat-shaded —
    top at full light lifted 28% toward white, x faces at 78%, z faces at 56% — heights x4 (HEIGHT_X), a black hole a black cube
    with white edges, and anything too small to be a cube an additive pixel of its colour. Here the camera rides behind the ship. */
+/* =================================== HYPERSPACE: the game's own jump, ported =================================== */
+/* What a pilot sees on the galaxy hyperdrive (HyperspaceSky.java, post/hyperspace.fsh, GameRendererMixin): the hyperspace dimension's
+   sky, a tunnel round the direction of travel -- an opaque navy base, two additive cloud layers of hyperspace_tunnel.png rushing out
+   from the nose (log-angle, 1.1 a second; the far layer finer, slower, dimmer), three colour lobes drifting round the axis through the
+   game's palette, a dark lobe between them, and a white-hot core dead ahead torn outward unevenly -- then the radial streak blur over the
+   sky alone (24 taps, 0.17 long, calm middle, vignette, the cool tint), FOV x1.25, and the real systems near the ship drawn sharp over
+   it at their true direction and size (one light year = one galaxy cell; drawn within six, fading from 3.6). Constants are the game's.
+   The game's jump is a hard cut from the system to this sky, and so is this. */
+function makeHS() {
+  const RINGS = 30, SECTORS = 64, RADIUS = 90, FLOW = 1.1, ROLL = .12, CORE_RINGS = 14, CORE_DEG = 45, LOBE_PERIOD = [11, 15, 19];
+  const PALETTE = [[.15, 1, .98], [.62, .2, .27], [.55, .4, .62], [.05, .55, .7], [.45, .2, .95], [1, .55, .15], [.15, .9, .45], [.95, .2, .7], [.4, .7, 1], [.85, .1, .15]];
+  // the game's hash and noise, 64-bit exact (SplitMix64's finaliser)
+  const M = (1n << 64n) - 1n;
+  function hash(x) {
+    x = BigInt.asUintN(64, x); x = ((x ^ (x >> 30n)) * 0xBF58476D1CE4E5B9n) & M; x = ((x ^ (x >> 27n)) * 0x94D049BB133111EBn) & M; x ^= x >> 31n;
+    return Number(x >> 11n) * 2 ** -53;
+  }
+  function noise(seed, x) {
+    const i = Math.floor(x), f = x - i, s = f * f * f * (f * (f * 6 - 15) + 10), b = BigInt(seed) * 0x9E3779B9n;
+    return hash(b + BigInt(i)) * (1 - s) + hash(b + BigInt(i + 1)) * s;
+  }
+  function key(k, i) {
+    const a = Math.floor(hash(BigInt(k) * 7919n + BigInt(i)) * PALETTE.length), b = Math.floor(hash(BigInt(k) * 7919n + BigInt(i - 1)) * PALETTE.length);
+    return PALETTE[a === b ? (a + 1 + k) % PALETTE.length : a];
+  }
+  function paletteAt(k, x) {
+    const i = Math.floor(x), f = x - i, p0 = key(k, i - 1), p1 = key(k, i), p2 = key(k, i + 1), p3 = key(k, i + 2);
+    return [0, 1, 2].map(c => clamp(.5 * (2 * p1[c] + (-p0[c] + p2[c]) * f + (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * f * f + (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * f * f * f)));
+  }
+  const load = src => { const t = new THREE.TextureLoader().load(src); t.generateMipmaps = false; t.minFilter = t.magFilter = THREE.LinearFilter; return t; };
+  const tunnelTex = load("hyperspace_tunnel.webp"); tunnelTex.wrapS = tunnelTex.wrapT = THREE.RepeatWrapping;
+  const starsTex = load("hyperspace_stars.webp");
+  // the sphere round F (local -Z), ring angle deg = 180 (i/30)^1.7, as the game builds it; colour and flow in the vertex shader
+  function grid(rings, degOf) {
+    const pos = [], deg = [], phi = [], uu = [], idx = [];
+    for (let i = 0; i <= rings; i++) {
+      const d = degOf(i), th = d * Math.PI / 180;
+      for (let j = 0; j <= SECTORS; j++) {
+        const p = 2 * Math.PI * j / SECTORS;
+        pos.push(Math.sin(th) * Math.cos(p) * RADIUS, Math.sin(th) * Math.sin(p) * RADIUS, -Math.cos(th) * RADIUS); deg.push(d); phi.push(p); uu.push(j / SECTORS * 3);
+        if (i && j < SECTORS) { const a = (i - 1) * (SECTORS + 1) + j, b = i * (SECTORS + 1) + j; idx.push(a, b, b + 1, a, b + 1, a + 1); }
+      }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("deg", new THREE.Float32BufferAttribute(deg, 1)); g.setAttribute("phi", new THREE.Float32BufferAttribute(phi, 1));
+    g.setAttribute("uu", new THREE.Float32BufferAttribute(uu, 1)); g.setIndex(idx); return g;
+  }
+  const lobeU = { t: { value: 0 }, lobeAt: { value: new THREE.Vector3() }, lobeC0: { value: new THREE.Vector3() }, lobeC1: { value: new THREE.Vector3() },
+    lobeC2: { value: new THREE.Vector3() }, darkAt: { value: 0 }, map: { value: tunnelTex } };
+  const LOBES = `uniform float t; uniform vec3 lobeAt; uniform vec3 lobeC0; uniform vec3 lobeC1; uniform vec3 lobeC2; uniform float darkAt;
+    attribute float deg; attribute float phi; attribute float uu; const vec3 NAVY = vec3(.025, .045, .16);
+    void lobes(out vec3 sum, out float total, out float lit){ float a = phi + ${ROLL} * t;
+      float w0 = max(0., cos(a - lobeAt.x) * 1.7 - .45), w1 = max(0., cos(a - lobeAt.y) * 1.7 - .45), w2 = max(0., cos(a - lobeAt.z) * 1.7 - .45);
+      sum = lobeC0 * w0 + lobeC1 * w1 + lobeC2 * w2; total = w0 + w1 + w2;
+      float dark = max(0., cos(a - darkAt) * 1.7 - .6), reach = .35 + .65 * exp(-deg / 60.); lit = (1. - .9 * min(1., dark)) * reach; }`;
+  const sky = new THREE.Scene(), tunnel = new THREE.Group(); sky.add(tunnel);
+  const ring = grid(RINGS, i => 180 * Math.pow(i / RINGS, 1.7));
+  tunnel.add(new THREE.Mesh(ring, new THREE.ShaderMaterial({ uniforms: lobeU, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
+    vertexShader: `${LOBES} varying vec3 vC; void main(){ vec3 s; float tot, lit; lobes(s, tot, lit); vC = NAVY * .55 + s * .10; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+    fragmentShader: `varying vec3 vC; void main(){ gl_FragColor = vec4(vC, 1.); }` })));
+  const cloud = (vk, vs, vo, us, uo, alpha) => new THREE.Mesh(ring, new THREE.ShaderMaterial({ uniforms: lobeU, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
+    blending: THREE.CustomBlending, blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneFactor,
+    vertexShader: `${LOBES} varying vec3 vC; varying vec2 vUv; void main(){ vec3 s; float tot, lit; lobes(s, tot, lit);
+      float gain = lit * (.95 + .25 / max(.3, tot)); vC = NAVY * .8 + s * gain;
+      vUv = vec2(uu * ${us.toFixed(2)} + ${uo.toFixed(2)}, (log(deg + 1.5) - ${(vk * FLOW).toFixed(3)} * t) * ${(.6 * vs).toFixed(3)} + ${vo.toFixed(2)});
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+    fragmentShader: `uniform sampler2D map; varying vec3 vC; varying vec2 vUv; void main(){ gl_FragColor = vec4(texture2D(map, vUv).rgb * vC, ${alpha.toFixed(2)}); }` }));
+  tunnel.add(cloud(1, 1, 0, 1, 0, 1), cloud(.62, 1.7, .37, 2, .5, .45));
+  const coreU = { n: { value: new THREE.Vector3() } };
+  tunnel.add(new THREE.Mesh(grid(CORE_RINGS, i => CORE_DEG * Math.pow(i / CORE_RINGS, 1.5)), new THREE.ShaderMaterial({ uniforms: coreU, depthWrite: false, depthTest: false,
+    side: THREE.DoubleSide, blending: THREE.CustomBlending, blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneFactor,
+    vertexShader: `uniform vec3 n; attribute float deg; attribute float phi; varying vec3 vC;
+      void main(){ float jag = clamp(.5 + .25 * sin(3. * phi + n.x) + .17 * sin(7. * phi - n.y) + .10 * sin(13. * phi + n.z), 0., 1.);
+        float reach = 7. * (.45 + 1.5 * jag), tail = 13. * (.6 + .9 * jag), q = deg / reach;
+        float k = (exp(-q * q) * 1.6 + exp(-deg / tail) * .55) * (1. - smoothstep(${CORE_DEG * .6}, ${CORE_DEG}., deg)); float w = min(1., k);
+        vC = vec3(w, w * .98, w * .95); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+    fragmentShader: `varying vec3 vC; void main(){ gl_FragColor = vec4(vC, 1.); }` })));
+  // the streak blur, sky only (here the whole first pass is sky): Control.x = 1, Flow = the nose (the screen's middle)
+  const rt = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false }); rt.texture.encoding = THREE.sRGBEncoding;
+  const oc = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), post = new THREE.Scene();
+  const blur = new THREE.ShaderMaterial({ uniforms: { InSampler: { value: rt.texture }, phase: { value: 0 } }, depthTest: false, depthWrite: false,
+    vertexShader: `varying vec2 uv0; void main(){ uv0 = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
+    fragmentShader: `uniform sampler2D InSampler; uniform float phase; varying vec2 uv0;
+      void main(){ vec3 scene = texture2D(InSampler, uv0).rgb; float k = 1.; vec2 delta = uv0 - .5; float dist = length(delta);
+        vec2 rdir = dist > 1e-4 ? delta / dist : vec2(0.); float jitter = fract(sin(dot(uv0, vec2(12.9898, 78.233))) * 43758.5453 + phase);
+        float len = .17 * k; vec3 acc = vec3(0.); float ws = 0.;
+        for (int i = 0; i < 24; i++) { float f = (float(i) + jitter) / 24.; float w = 1. - f; acc += texture2D(InSampler, uv0 - rdir * len * f).rgb * w; ws += w; }
+        vec3 st = acc / ws; st = mix(st, st * vec3(.82, .9, 1.15), .4 * k);
+        vec3 o = mix(scene, st, k * mix(.45, 1., smoothstep(.05, .6, dist))); o *= 1. - .28 * k * smoothstep(.55, .95, dist);
+        gl_FragColor = vec4(o, 1.); }` });
+  post.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blur));
+  // the bodies: premultiplied OVER, a halo (cell 1) and a sphere (cell 0) a star, a glow, disc and ring a hole -- instanced quads
+  const MAX = 160, quad = new THREE.InstancedBufferGeometry(), base = new THREE.PlaneGeometry(2, 2);
+  quad.index = base.index; quad.setAttribute("position", base.getAttribute("position")); quad.setAttribute("uv", base.getAttribute("uv"));
+  const iDir = new THREE.InstancedBufferAttribute(new Float32Array(MAX * 3), 3), iSz = new THREE.InstancedBufferAttribute(new Float32Array(MAX * 2), 2), iCol = new THREE.InstancedBufferAttribute(new Float32Array(MAX * 4), 4);
+  [iDir, iSz, iCol].forEach(a => a.setUsage(THREE.DynamicDrawUsage));
+  quad.setAttribute("dir", iDir); quad.setAttribute("sz", iSz); quad.setAttribute("col", iCol); quad.instanceCount = 0;
+  const bodies = new THREE.Mesh(quad, new THREE.ShaderMaterial({ uniforms: { map: { value: starsTex } }, transparent: true, depthWrite: false,
+    blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+    vertexShader: `attribute vec3 dir; attribute vec2 sz; attribute vec4 col; varying vec2 vUv; varying vec4 vC;
+      void main(){ vUv = vec2(sz.y + uv.x * .25, uv.y); vC = col; vec3 c = cameraPosition + dir * 50.;
+        vec3 r = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]), u = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+        float h = 50. * tan(radians(min(sz.x, 80.))); gl_Position = projectionMatrix * viewMatrix * vec4(c + (r * position.x + u * position.y) * h, 1.); }`,
+    fragmentShader: `uniform sampler2D map; varying vec2 vUv; varying vec4 vC; void main(){ vec4 tx = texture2D(map, vUv); gl_FragColor = vec4(tx.rgb * tx.a * vC.rgb, tx.a * vC.a); }` }));
+  bodies.frustumCulled = false; bodies.renderOrder = -1;
+  const sizeV = new THREE.Vector2(), F = new V3(), Rv = new V3(), Uv = new V3(), Y = new V3(0, 1, 0), m4 = new THREE.Matrix4();
+  function frame(t, cam, f) {
+    for (let k = 0; k < 3; k++) {
+      const c = paletteAt(k, t / LOBE_PERIOD[k]); lobeU["lobeC" + k].value.set(...c);
+      lobeU.lobeAt.value.setComponent(k, k * 2 * Math.PI / 3 + 1.6 * (noise(17 + k, t / 9) - .5) + .05 * t);
+    }
+    lobeU.darkAt.value = 2 * Math.PI * noise(91, t / 23) + .03 * t; lobeU.t.value = t;
+    coreU.n.value.set(6.283 * noise(201, t / 3), 6.283 * noise(202, t / 4.5), 6.283 * noise(203, t / 2.2));
+    blur.uniforms.phase.value = (t % 2) / 2;
+    // the tunnel's frame: F the travel direction, R = F x up, U = R x F (the game's), local -Z along F
+    F.copy(f).normalize(); Rv.crossVectors(F, Y).normalize(); Uv.crossVectors(Rv, F).normalize();
+    m4.makeBasis(Rv, Uv, F.clone().negate()); tunnel.quaternion.setFromRotationMatrix(m4); tunnel.position.copy(cam.position);
+  }
+  // the systems within reach: [dir xyz, deg, cell u0, rgba]; star = {x, y, z, r (ly), col [r,g,b], lum, hole}
+  function place(cam, stars) {
+    const reach = 6, list = [];
+    for (const s of stars) {
+      const dx = s.x - cam.position.x, dy = s.y - cam.position.y, dz = s.z - cam.position.z, d = Math.hypot(dx, dy, dz);
+      if (d <= s.r || d > reach) continue;
+      const fade = smooth(reach, reach * .6, d), deg = Math.max(.22, Math.asin(Math.min(1, s.r / d)) * 180 / Math.PI), dir = [dx / d, dy / d, dz / d];
+      if (s.hole) { const disc = deg / .62;
+        list.push([d, dir, Math.max(disc * 4, 1.4), .25, [.42 * fade, .18 * fade, .62 * fade, .42 * .7 * fade]], [d, dir, disc, .5, [0, 0, 0, fade]], [d, dir, disc, .75, [fade, .78 * fade, .52 * fade, fade]]);
+        continue; }
+      const k = fade * s.lum, c = s.col;
+      list.push([d, dir, Math.max(deg * 5, 1.6) * (.7 + .5 * s.lum), .25, [c[0] * k, c[1] * k, c[2] * k, .7 * k]],
+        [d, dir, deg / .92, 0, [(1 - (1 - c[0]) * .35) * fade, (1 - (1 - c[1]) * .35) * fade, (1 - (1 - c[2]) * .35) * fade, fade]]);
+    }
+    list.sort((a, b) => b[0] - a[0]);       // farthest first: OVER is order-dependent
+    const n = Math.min(MAX, list.length);
+    for (let i = 0; i < n; i++) { const [, d, sz, u0, c] = list[i]; iDir.setXYZ(i, ...d); iSz.setXY(i, sz, u0); iCol.setXYZW(i, ...c); }
+    quad.instanceCount = n; iDir.needsUpdate = iSz.needsUpdate = iCol.needsUpdate = true;
+  }
+  // sky -> blur -> the bodies and the ship over it, sharp
+  function render(cam, over) {
+    R.getDrawingBufferSize(sizeV); if (rt.width !== sizeV.x || rt.height !== sizeV.y) rt.setSize(sizeV.x, sizeV.y);
+    R.setRenderTarget(rt); R.setClearColor(0x000000, 1); R.clear(); R.render(sky, cam);
+    R.setRenderTarget(null); R.clear(); R.render(post, oc);
+    R.autoClear = false; R.clearDepth(); R.render(over, cam); R.autoClear = true; R.setClearColor(0x000000, 0);
+  }
+  return { frame, place, render, bodies };
+}
+
 function buildHyper() {
   const sec = $("hyper");
   const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(55, 1, .05, 20000);
@@ -1846,6 +1993,13 @@ function buildHyper() {
     return { xyz: new Int16Array(B, xo, xn / 2), col: new Uint8Array(B, co, cn), cls: new Uint8Array(B, lo, ln), n: ln };
   }
   const T = decode("tube"), F = decode("far");
+  const hs = makeHS(), over = new THREE.Scene();
+  // the systems by the route, as hyperspace draws them: one light year to a galaxy cell, radius (6 + 7 size) blocks, a hole's 14
+  const near = [];
+  for (let i = 0; i < T.n; i++) {
+    const c = T.cls[i], col = [T.col[i * 3] / 255, T.col[i * 3 + 1] / 255, T.col[i * 3 + 2] / 255];
+    near.push({ x: T.xyz[i * 3] / 6, y: T.xyz[i * 3 + 1] / 6, z: T.xyz[i * 3 + 2] / 6, hole: c === 8, r: c === 8 ? .14 : (6 + 7 * SIZE[c]) / 100, col, lum: Math.min(1, .55 + .35 * Math.min(1, SIZE[c])) });
+  }
   // shaded cube: per-vertex light and lift by face (BoxGeometry order: +x, -x, +y, -y, +z, -z)
   const box = new THREE.BoxGeometry(2, 2, 2), lightA = [], liftA = [];
   [[.78, 0], [.78, 0], [1, .28], [.45, 0], [.56, 0], [.56, 0]].forEach(([l, f]) => { for (let i = 0; i < 4; i++) { lightA.push(l); liftA.push(f); } });
@@ -1876,11 +2030,11 @@ function buildHyper() {
   const farPts = new THREE.Points(fg, new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
   farPts.frustumCulled = false; scene.add(farPts);
   // the ship, riding ahead of the camera
-  const rig = new THREE.Group(); scene.add(rig);
-  const shipM = bakedMesh("ship"); shipM.userData.reveal(1e9); shipM.scale.setScalar(.06); shipM.rotation.x = -Math.PI / 2; shipM.position.set(0, -.25, -1.6); rig.add(shipM);
-  scene.add(new THREE.HemisphereLight(0xcfd8ff, 0x202030, .9));
+  const rig = new THREE.Group(); over.add(rig, hs.bodies);
+  const shipM = bakedMesh("ship"); shipM.userData.reveal(1e9); shipM.scale.setScalar(.06); shipM.rotation.x = -Math.PI / 2; shipM.position.set(0, -.42, -1.6); rig.add(shipM);     // low in the frame, so the white core ahead shows over it
+  scene.add(new THREE.HemisphereLight(0xcfd8ff, 0x202030, .9)); over.add(new THREE.HemisphereLight(0xcfd8ff, 0x202030, .9));
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: ROUNDGLOW, color: 0x9fd0ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: .8 }));
-  glow.scale.setScalar(.5); glow.position.set(0, -.25, -1.05); rig.add(glow);
+  glow.scale.setScalar(.5); glow.position.set(0, -.42, -1.05); rig.add(glow);
   const [x0, z0] = HYPER.start, R = HYPER.radius;     // the home system: GalaxyShape.homeSystem() of this galaxy, out on an arm's trailing edge
   const dir = new V3(-x0, 0, -z0).normalize(), side = new V3(-dir.z, 0, dir.x);
   // the system we just left, still lit: a glow on its cube that fades as the galaxy opens out
@@ -1903,8 +2057,28 @@ function buildHyper() {
       { p: 1, pos: [dir.x * -40, 6, dir.z * -40], look: [dir.x * 200, 0, dir.z * 200], ease: t => t }
     ]);
   }
-  const look = new V3();
+  const look = new V3(), home = new V3(x0, 0, z0);
+  let jumped = false;
   function frame(dt, t, p) {
+    // the jump: a hard cut to hyperspace at the Hyperdrive caption, as the game cuts from the system's sky to the tunnel
+    jumped = p >= P.h[1];
+    // the systems as map cubes only round home: once the camera climbs, the route's every system would draw as a dense track
+    stars.visible = holes.visible = p < P.h[1] * .3;
+    if (jumped) {
+      const u = (p - P.h[1]) / Math.max(1e-6, 1 - P.h[1]);
+      // a stretch of the course 2,685 light years out (home sits on an arm's empty trailing edge, where nothing passes for the first
+      // few light years); typical of the route: eight systems within 2.5 ly over the four light years flown at Frontier's 0.5 ly/s
+      cam.position.copy(home).addScaledVector(dir, 2685 + 4 * u); cam.position.y = .05;
+      cam.position.addScaledVector(side, st.px * .02); cam.position.y += st.py * .015;
+      look.copy(cam.position).add(dir); cam.lookAt(look);
+      cam.fov = 55 * 1.25; cam.near = .02; cam.far = 200; cam.updateProjectionMatrix();
+      rig.position.copy(cam.position); rig.quaternion.copy(cam.quaternion); rig.visible = true;
+      shipM.rotation.z = Math.sin(t * .8) * .05;
+      hs.frame(t, cam, dir); hs.place(cam, near);
+      capSwap(cap, 1, items);
+      return;
+    }
+    if (cam.fov !== 55) { cam.fov = 55; cam.updateProjectionMatrix(); }
     R_(p, cam.position, look);
     cam.position.x += st.px * 2 * smooth(0, .1, p); cam.position.y += st.py * 1.5 * smooth(0, .1, p);
     cam.lookAt(look);
@@ -1916,7 +2090,8 @@ function buildHyper() {
     homeGlow.scale.setScalar(Math.max(.5, d * .03)); homeGlow.material.opacity = .75 * (1 - smooth(.06, P.h[1] * .3, p));
     capSwap(cap, stepIndex(p, [0, P.h[1]]), items);
   }
-  return { sec, scene, cam, layout, frame, sky: "hyper" };
+  function render() { if (jumped) hs.render(cam, over); else LENS.render(scene, cam); }
+  return { sec, scene, cam, layout, frame, render, sky: "hyper" };
 }
 
 /* =================================== THE FRONTIER (Option D, unchanged) =================================== */
@@ -2143,20 +2318,51 @@ addEventListener("hashchange", route);
    It drives the page's own scroll position, so every scene, caption and hand-over runs exactly as it was built. Each chapter runs
    from its section's top to the next section's top (the hand-over included). Manual scrolling is off on the Journey. */
 const PLAYER = { on: false, started: false, t: 0,
-  // seconds a chapter: Earth, the starship, the system, the galaxy, the Frontier, three worlds, the end (~58 s in all; principal
-  // 2026-11-12: "accelerate the entire journey process, and don't stop on things for more than 1 second")
-  D: [4, 9, 15, 8, 6, 4, 4, 4, 4],
+  // seconds a chapter: Earth, the starship, the system, the galaxy, the Frontier, three worlds, the end (~1 min 40 s; principal
+  // 2026-11-12: "the journey video is too fast. make it smoother, and linger on the galaxy longer. it's especially too fast around
+  // the spherical planet." -- it had been cut to ~58 s on 2026-11-12's "accelerate the entire journey")
+  D: [5, 12, 32, 24, 9, 5, 5, 5, 5],
   names: ["Earth", "Your starship", "The solar system", "The galaxy", "The Frontier", "Hostile worlds", "Rapture worlds", "Eden", "What will you discover?"] };
+/* Where a chapter's seconds go. A chapter's scroll runs from its section's top (p 0) to where its scene ends (p 1), then a hand-over to
+   the next section's top. By default p is spread evenly over all but the last second. A chapter with captions lists [anchor, seconds]
+   knots instead -- an element id (its p, as the scene itself reads it with anchorP) or a number -- so each caption gets the time it
+   needs rather than the share its scroll height happens to give it ("h-1*.75": three quarters of the way to that anchor); the time
+   after the last knot is the hand-over. */
+const PACE = {
+  1: [[0, 0], ["l-1", 4.5], ["l-3", 7.5], ["l-4", 10], [1, 11]],
+  // the system, then the spherical planet: the core, no wrong way up, jump anywhere, each given time to read and watch
+  2: [[0, 0], ["s-c0", 8], ["s-c1", 13.5], ["s-c2", 19], ["s-c3", 24.5], ["s-out", 28], [1, 30.5]],
+  // the galaxy opens out and is held (the overview is reached at 3/4 of the way to h-1), then the jump
+  3: [[0, 0], ["h-1*.75", 9], ["h-1", 15], [1, 22.5]],
+  4: [[0, 0], ["f-p1", 3], ["f-p2", 6], [1, 8]]
+};
 const ppEl = $("pp"), trackEl = $("track"), fillEl = $("fill"), playerEl = $("player");
 const TOTAL = PLAYER.D.reduce((a, b) => a + b, 0);
 function chapterStart(i) { return PLAYER.D.slice(0, i).reduce((a, b) => a + b, 0); }
 $("ticks").innerHTML = PLAYER.names.map((n, i) => `<i style="left:${(chapterStart(i) / TOTAL * 100).toFixed(2)}%" title="${n}"></i>`).join("");
+// p of the chapter at local time u (seconds), or null once p has reached 1 and the hand-over is running
+function paceP(i, sec, u, d) {
+  const at = a => { if (typeof a === "number") return a; const [id, k] = a.split("*"); return anchorP(sec, $(id)) * (k ? +k : 1); };
+  const K = PACE[i] ? PACE[i].map(([a, s]) => [at(a), s]) : [[0, 0], [1, Math.max(d - 1, d * .8)]];
+  const last = K[K.length - 1];
+  if (u >= last[1]) return null;
+  let j = 0; while (j < K.length - 2 && u > K[j + 1][1]) j++;
+  const [p0, s0] = K[j], [p1, s1] = K[j + 1];
+  return p0 + (p1 - p0) * clamp((u - s0) / Math.max(1e-6, s1 - s0));
+}
+function handOver(i, d) { const K = PACE[i]; return K ? K[K.length - 1][1] : Math.max(d - 1, d * .8); }
 function yAt(t) {
   const S = VIEWS.journey.stages, end = document.documentElement.scrollHeight - innerHeight;
   let a = 0;
   for (let i = 0; i < S.length; i++) {
-    const y0 = S[i].sec.offsetTop, y1 = i < S.length - 1 ? S[i + 1].sec.offsetTop : end, d = PLAYER.D[i];
-    if (t <= a + d || i === S.length - 1) return Math.min(end, y0 + (y1 - y0) * clamp((t - a) / d));
+    const sec = S[i].sec, y0 = sec.offsetTop, h = Math.max(1, sec.offsetHeight - innerHeight);
+    const y1 = i < S.length - 1 ? S[i + 1].sec.offsetTop : end, d = PLAYER.D[i];
+    if (t <= a + d || i === S.length - 1) {
+      const u = t - a, p = paceP(i, sec, u, d);
+      if (p !== null) return Math.min(end, y0 + h * p);
+      const h0 = handOver(i, d);
+      return Math.min(end, y0 + h + (y1 - (y0 + h)) * clamp((u - h0) / Math.max(1e-6, d - h0)));
+    }
     a += d;
   }
   return end;
@@ -2233,7 +2439,7 @@ function loop() {
   fadeEl.style.opacity = (col === "#000" ? fade : fade * .92).toFixed(3);
   const tx = st.active ? ndc.x : 0, ty = st.active ? ndc.y : 0;
   st.px += (tx - st.px) * (RM ? 0 : 1 - Math.exp(-dt * 3)); st.py += (ty - st.py) * (RM ? 0 : 1 - Math.exp(-dt * 3));
-  if (ok) { w.s.frame(dt, T, sp.get(w)); LENS.render(w.s.scene, w.s.cam); if (!HEROSTATE.done && window.heroDone) heroDone(); }
+  if (ok) { w.s.frame(dt, T, sp.get(w)); if (w.s.render) w.s.render(); else LENS.render(w.s.scene, w.s.cam); if (!HEROSTATE.done && window.heroDone) heroDone(); }
   else { R.setRenderTarget(null); R.clear(); }
   // one scene a frame, ahead of the reader: the next two are built before they are scrolled to
   if (ok) for (const j of [k + 1, k + 2, k - 1]) { const n = stages[j]; if (n && !n.s && n.ready()) break; }

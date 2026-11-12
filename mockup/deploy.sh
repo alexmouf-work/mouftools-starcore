@@ -11,6 +11,6 @@ doc = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n' + s
        '</head>\n<body>\n' + s[i:].strip() + '\n</body>\n</html>\n')
 open("../public/index.html", "w").write(doc)
 PY
-cp site/hero.webp site/tex.webp site/planets.webp site/journey.json site/journey.txt site/updates.json site/updates.txt site/creatures.json site/creatures.webp ../public/
+cp site/hero.webp site/tex.webp site/planets.webp site/journey.json site/journey.txt site/updates.json site/updates.txt site/creatures.json site/creatures.webp site/hyperspace_tunnel.webp site/hyperspace_stars.webp ../public/
 cp site/favicon.ico site/icon-512.png site/icon-192.png site/favicon-32.png site/favicon-16.png site/apple-touch-icon.png ../public/
 ls -la ../public

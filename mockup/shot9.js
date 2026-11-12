@@ -8,7 +8,7 @@ const { chromium, devices } = require('playwright');
   await pg.goto((process.env.BASE || 'http://127.0.0.1:8766') + '/' + (process.env.PAGE || 'star-core-journey.html'), { waitUntil: 'domcontentloaded', timeout: 90000 }); await pg.waitForTimeout(6000);
   await pg.screenshot({ path: `${out}/${prefix}_hero.png`, timeout: 120000 });
   await pg.click('#play'); await pg.waitForTimeout(500); await pg.click('#pp');
-  const TOTAL = 58;
+  const TOTAL = +(process.env.TOTAL || 102);
   for (const s of list.split(',')) {
     const box = await pg.locator('#track').boundingBox();
     await pg.mouse.click(box.x + box.width * (+s / TOTAL), box.y + box.height / 2); await pg.waitForTimeout(5000);

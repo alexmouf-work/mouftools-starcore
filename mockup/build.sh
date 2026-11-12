@@ -10,5 +10,5 @@ cd "$(dirname "$0")"
   echo 'const J_ = ASSETS.J, PLANETS = J_.PLANETS, GPLANET = J_.GPLANET, WORLDS = J_.WORLDS, COAG = J_.COAG, AURORA = J_.AURORA, SISTERS = J_.SISTERS, JETS = J_.jets, HYPER = J_.hyper;'
   cat engine.js upd.js stages.js
   echo '}'; echo '})();</script>'; } > star-core-journey.html
-mkdir -p site && cp star-core-journey.html slim/hero.webp slim/tex.webp slim/planets.webp slim/journey.json slim/journey.txt slim/updates.json slim/updates.txt cre/out/creatures.json cre/out/creatures.webp site/
+mkdir -p site && cp star-core-journey.html slim/hero.webp slim/tex.webp slim/planets.webp slim/journey.json slim/journey.txt slim/updates.json slim/updates.txt cre/out/creatures.json cre/out/creatures.webp hyperspace_tunnel.webp hyperspace_stars.webp site/
 ls -la site | awk 'NR>1 {s+=$5; print $5, $9} END {print s, "total"}'
