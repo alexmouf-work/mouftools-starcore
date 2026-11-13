@@ -238,7 +238,7 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
 <nav id="nav" aria-label="Site">
   <a class="brand" href="#journey">Starcore</a>
   <div class="tabs" role="tablist" aria-label="View">
-    <button role="tab" id="tab-journey" aria-controls="journey" aria-selected="true" data-view="journey">Journey</button>
+    <button role="tab" id="tab-journey" aria-controls="journey" aria-selected="true" data-view="journey">Overview</button>
     <button role="tab" id="tab-updates" aria-controls="updates" aria-selected="false" data-view="updates">Updates</button>
   </div>
   <a class="btn primary" href="#download">Download for Fabric</a>
@@ -294,7 +294,7 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
 
 <!-- three surfaces -->
 <section id="w-hazard" class="world" aria-label="Hostile worlds"><div class="panel tall" style="min-height:240svh"><div class="sticky"><div class="wrap"><div class="cap wcard" id="hazard-card"></div></div></div></div></section>
-<section id="w-rapture" class="world" aria-label="Rapture worlds"><div class="panel tall" style="min-height:240svh"><div class="sticky"><div class="wrap"><div class="cap wcard" id="rapture-card"></div></div></div></div></section>
+<section id="w-creatures" class="world" aria-label="Wildlife"><div class="panel tall" style="min-height:420svh"><div class="sticky"><div class="wrap"><div class="cap"><span class="cap-name">Wildlife</span><p class="cap-text">Every world grows its own creatures, from the generator the game itself runs. No two are alike.</p></div></div></div></div></section>
 <section id="w-eden" class="world" aria-label="Eden"><div class="panel tall" style="min-height:240svh"><div class="sticky"><div class="wrap"><div class="cap wcard" id="eden-card"></div></div></div></div></section>
 <section id="w-geometry" class="world dsec" aria-label="What will you discover?">
   <!-- the banner is up as soon as this chapter starts; the wordmark fades in above it once the banner has settled -->
@@ -305,11 +305,6 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
     <p class="legal"><a href="https://mouftools.com/privacy#starcore">Privacy</a> &middot; <a href="https://mouftools.com/terms#starcore">Terms</a><br>Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft.</p>
   </div></div></div></div>
 </section>
-<div id="player" hidden>
-  <button id="pp" type="button" aria-label="Pause"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-pause" d="M4 3h3v10H4zM9 3h3v10H9z" fill="currentColor"/><path class="i-play" d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg></button>
-  <div id="track" role="slider" tabindex="0" aria-label="Journey" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="fill"></div><div id="ticks"></div></div>
-  <span id="chap" aria-live="off"></span>
-</div>
 </main>
 
 <main id="updates" role="tabpanel" aria-labelledby="tab-updates" hidden>
@@ -354,3 +349,8 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
   </div></div></div>
 </section>
 </main>
+<div id="player" hidden>
+  <button id="pp" type="button" aria-label="Pause"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-pause" d="M4 3h3v10H4zM9 3h3v10H9z" fill="currentColor"/><path class="i-play" d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg></button>
+  <div id="track" role="slider" tabindex="0" aria-label="Playback" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="fill"></div><div id="ticks"></div></div>
+  <span id="chap" aria-live="off"></span>
+</div>

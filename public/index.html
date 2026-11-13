@@ -244,7 +244,7 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
 <nav id="nav" aria-label="Site">
   <a class="brand" href="#journey">Starcore</a>
   <div class="tabs" role="tablist" aria-label="View">
-    <button role="tab" id="tab-journey" aria-controls="journey" aria-selected="true" data-view="journey">Journey</button>
+    <button role="tab" id="tab-journey" aria-controls="journey" aria-selected="true" data-view="journey">Overview</button>
     <button role="tab" id="tab-updates" aria-controls="updates" aria-selected="false" data-view="updates">Updates</button>
   </div>
   <a class="btn primary" href="#download">Download for Fabric</a>
@@ -300,7 +300,7 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
 
 <!-- three surfaces -->
 <section id="w-hazard" class="world" aria-label="Hostile worlds"><div class="panel tall" style="min-height:240svh"><div class="sticky"><div class="wrap"><div class="cap wcard" id="hazard-card"></div></div></div></div></section>
-<section id="w-rapture" class="world" aria-label="Rapture worlds"><div class="panel tall" style="min-height:240svh"><div class="sticky"><div class="wrap"><div class="cap wcard" id="rapture-card"></div></div></div></div></section>
+<section id="w-creatures" class="world" aria-label="Wildlife"><div class="panel tall" style="min-height:420svh"><div class="sticky"><div class="wrap"><div class="cap"><span class="cap-name">Wildlife</span><p class="cap-text">Every world grows its own creatures, from the generator the game itself runs. No two are alike.</p></div></div></div></div></section>
 <section id="w-eden" class="world" aria-label="Eden"><div class="panel tall" style="min-height:240svh"><div class="sticky"><div class="wrap"><div class="cap wcard" id="eden-card"></div></div></div></div></section>
 <section id="w-geometry" class="world dsec" aria-label="What will you discover?">
   <!-- the banner is up as soon as this chapter starts; the wordmark fades in above it once the banner has settled -->
@@ -311,11 +311,6 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
     <p class="legal"><a href="https://mouftools.com/privacy#starcore">Privacy</a> &middot; <a href="https://mouftools.com/terms#starcore">Terms</a><br>Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft.</p>
   </div></div></div></div>
 </section>
-<div id="player" hidden>
-  <button id="pp" type="button" aria-label="Pause"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-pause" d="M4 3h3v10H4zM9 3h3v10H9z" fill="currentColor"/><path class="i-play" d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg></button>
-  <div id="track" role="slider" tabindex="0" aria-label="Journey" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="fill"></div><div id="ticks"></div></div>
-  <span id="chap" aria-live="off"></span>
-</div>
 </main>
 
 <main id="updates" role="tabpanel" aria-labelledby="tab-updates" hidden>
@@ -360,6 +355,11 @@ html.lock { overflow: hidden; overscroll-behavior: none; }
   </div></div></div>
 </section>
 </main>
+<div id="player" hidden>
+  <button id="pp" type="button" aria-label="Pause"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-pause" d="M4 3h3v10H4zM9 3h3v10H9z" fill="currentColor"/><path class="i-play" d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg></button>
+  <div id="track" role="slider" tabindex="0" aria-label="Playback" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="fill"></div><div id="ticks"></div></div>
+  <span id="chap" aria-live="off"></span>
+</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>(() => {
 const HERO = {"rects":{"minecraft_overworld":[0,0,512,256],"starcore_luneus":[0,256,512,256]},"size":[512,512],"planets":{"overworld":{"stem":"minecraft_overworld","glow":"#9cc6ff"},"luneus":{"stem":"starcore_luneus","glow":null}}};
@@ -1028,10 +1028,15 @@ function radialSky(base, cx, cy, rx, ry, stops) {
 /* =================================== THE UPDATES TAB =================================== */
 /* Its geometry is fetched the first time the tab opens: real dumps (an Overworld patch, a mini cluster, an asteroid field, a Lab
    station) and the sky planets PlanetFeature builds, baked and packed like the Journey's (see quadGeo), on the same texture sheet. */
-let UPD = null;
+let UPD = null, CREP = null, CRE = null;
+// the creatures, shared by both tabs: fetched once, by whichever wants them first (CRE is set when they land)
+function creLoad() {
+  if (!CREP) CREP = Promise.all([getOk("creatures.json").then(r => r.json()), loadImg("creatures.webp")]).then(([data, img]) => (CRE = { data, img }));
+  return CREP;
+}
 function updLoad() {
-  if (!UPD) UPD = Promise.all([getOk("updates.json").then(r => r.json()), inflate("updates.txt"), getOk("creatures.json").then(r => r.json()), loadImg("creatures.webp")])
-    .then(([meta, bin, cj, cimg]) => Object.assign(quadPack(meta, bin), { creatures: { data: cj, img: cimg } }));
+  if (!UPD) UPD = Promise.all([getOk("updates.json").then(r => r.json()), inflate("updates.txt"), creLoad()])
+    .then(([meta, bin, cre]) => Object.assign(quadPack(meta, bin), { creatures: cre }));
   return UPD;
 }
 function updMesh(D, gname, mats) { return quadMesh(D, gname, mats); }
@@ -1300,81 +1305,85 @@ function creaturePose(m, s) {
   if (ar && s.holding) { ar.rotation.x = ar.rotation.x * .5 - Math.PI / 10; ar.rotation.x -= Math.sin(s.swing * Math.PI) * 1.2; }
   if (s.hop) { const lift = 2 * Math.abs(Math.sin(s.walk)) * s.speed; U.parts.forEach(g => { if (!g.parent || g.parent.parent === m) g.position.y -= lift; }); }
 }
-function buildCreatures(C) {
-  const sec = $("u-cr"), scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(36, 1, .05, 500);
+/* Which creatures each tab shows, chosen once a visit (principal 2026-11-12: the Overview shows "another 8 random creatures ...
+   different to the ones shown in the update page"). Updates: the saved Ambler with its weapon, one flier, six more species. Overview:
+   a second flier and the species Updates left out, then, since there are fifteen species for sixteen places, the other individual of
+   one Updates species. No individual appears twice. */
+function crePicks(C) {
+  if (C.picks) return C.picks;
+  const shuf = a => a.map(v => [Math.random(), v]).sort((p, q) => p[0] - q[0]).map(p => p[1]);
+  const all = C.data.creatures, bySp = {}; all.forEach(c => (bySp[c.species] = bySp[c.species] || []).push(c));
+  const ambler = all.find(c => c.held), fliers = shuf(all.filter(c => c.winged));
+  const upd = [ambler, fliers[0]].filter(Boolean), used = new Set(upd), spU = new Set(upd.map(c => c.species));
+  for (const sp of shuf(Object.keys(bySp))) { if (upd.length >= 8) break; if (spU.has(sp)) continue; const c = shuf(bySp[sp])[0]; upd.push(c); used.add(c); spU.add(sp); }
+  const ov = [], spO = new Set(), take = c => { ov.push(c); used.add(c); spO.add(c.species); };
+  const f2 = fliers.find(c => !used.has(c)); if (f2) take(f2);
+  for (const sp of shuf(Object.keys(bySp))) { if (ov.length >= 8) break; if (spU.has(sp) || spO.has(sp)) continue; take(shuf(bySp[sp])[0]); }
+  for (const c of shuf(all)) { if (ov.length >= 8) break; if (!used.has(c) && !spO.has(c.species)) take(c); }
+  return (C.picks = { updates: shuf(upd), overview: shuf(ov) });
+}
+/* Eight creatures on a turning ring, the Frontier update's planet carousel with creatures on it (principal 2026-11-12: "make the
+   creatures update a carousel rather than individual ones one at a time, just like the planets"). Each stands on its plinth, scaled to
+   fit its place on the ring from its real extent over a whole cycle of its motion, animated by the game's own setupAnim (creaturePose),
+   turning a little on the spot; the ring pauses on each in turn and the one in front carries its name. */
+function buildCreatureCarousel(C, list, secId, cls) {
+  const sec = $(secId), scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(40, 1, .1, 400);
   scene.add(new THREE.HemisphereLight(0xf2ecff, 0x40305a, .95)); const sun = new THREE.DirectionalLight(0xfff4e6, .7); sun.position.set(3, 6, 4); scene.add(sun);
   scene.add(stars(1400, 60, 140, "#f6eeff", { alpha: .8 }));
   const tex = new THREE.Texture(C.img); tex.needsUpdate = true; tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestMipmapLinearFilter; tex.encoding = THREE.sRGBEncoding;
-  // eight different species at random, one of each species' two individuals -- always one in flight (a winged individual) and the
-  // Ambler, which is the same one for everyone: chosen once, with its weapon ("held"), and saved in creatures.json (cre/weapons.py)
-  const shuf = a => a.map(v => [Math.random(), v]).sort((p, q) => p[0] - q[0]).map(p => p[1]), one = a => a[Math.random() * a.length | 0];
-  const bySp = {}; C.data.creatures.forEach(c => (bySp[c.species] = bySp[c.species] || []).push(c));
-  const flier = one(C.data.creatures.filter(c => c.winged)), ambler = bySp.ambler && one(bySp.ambler);
-  const fixed = [flier, ambler].filter(Boolean), taken = new Set(fixed.map(c => c.species));
-  const pick = shuf(fixed.concat(shuf(Object.keys(bySp).filter(sp => !taken.has(sp))).slice(0, 8 - fixed.length).map(sp => one(bySp[sp]))));
-  const W = C.data.weapons || {};
-  const HOP = new Set(["hopper", "roundling", "gulpmaw"]);
+  const W = C.data.weapons || {}, HOP = new Set(["hopper", "roundling", "gulpmaw"]), n = list.length, RAD = 6.2;
+  // a place on the ring: half-width and height a creature (with its plinth) is scaled into, so neighbours never touch
+  const SLOT_R = RAD * Math.sin(Math.PI / n) * .78, SLOT_H = 2.5;
   const plinth = new THREE.MeshLambertMaterial({ color: 0x2a1f44 }), rim = new THREE.MeshBasicMaterial({ color: 0x2be0c8 });
-  // spaced wide apart, so the one being shown never has a neighbour cut off at the frame's edge
-  let x = 0; const row = [], box = new THREE.Box3(), size = new V3(), mid = new V3();
-  pick.forEach((c, i) => {
-    const m = creatureModel(c, tex, C.data.sheet), w = Math.max(.8, c.hitbox[0]), h = c.hitbox[1];
-    const spot = new THREE.Group(); scene.add(spot);
-    const r = Math.max(.7, w * .62), base = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.05, .18, 40), plinth); base.position.y = -.09; spot.add(base);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.02, .015, 6, 64), rim); ring.rotation.x = Math.PI / 2; spot.add(ring);
+  const ring = new THREE.Group(); scene.add(ring);
+  const box = new THREE.Box3(), b1 = new THREE.Box3();
+  const items = list.map((c, i) => {
+    const m = creatureModel(c, tex, C.data.sheet), h = c.hitbox[1];
+    const holder = new THREE.Group(), spot = new THREE.Group(); holder.add(spot); ring.add(holder);
+    const a = i / n * Math.PI * 2; holder.position.set(Math.sin(a) * RAD, 0, Math.cos(a) * RAD); holder.rotation.y = a;
+    const r = Math.max(.7, Math.max(.8, c.hitbox[0]) * .62);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.05, .18, 40), plinth); base.position.y = -.09; spot.add(base);
+    const rr = new THREE.Mesh(new THREE.TorusGeometry(r * 1.02, .015, 6, 64), rim); rr.rotation.x = Math.PI / 2; spot.add(rr);
     const air = c.winged ? .7 + h * .3 : c.swimmer ? .35 + h * .25 : 0; m.position.y = air; m.userData.air = air; spot.add(m);
     const holding = c.held && W[c.held] && m.userData.byName.arm_r;
     if (holding) heldItem(m.userData.byName.arm_r, W[c.held]);
     const anim = { fly: !!c.winged, hop: HOP.has(c.species), slither: c.species === "coilback", holding: !!holding,
       vertical: c.traits.some(t => /up and down/.test(t)), speed: c.winged ? 0 : .6 };
-    // its real extent through a whole cycle of its motion (wings up and down, legs fore and aft, the weapon's stroke), turned any
-    // way the turntable turns it: a cylinder round the plinth's axis
-    box.makeEmpty(); const b1 = new THREE.Box3();
-    for (let k = 0; k < 12; k++) {
-      creaturePose(m, { ...anim, age: k * 1.9, walk: k * .79, swing: k / 11 }); spot.updateMatrixWorld(true);
-      b1.setFromObject(spot); box.union(b1);
-    }
-    const rh = Math.max(r * 1.05, Math.hypot(Math.max(Math.abs(box.min.x), Math.abs(box.max.x)), Math.max(Math.abs(box.min.z), Math.abs(box.max.z)))) + .08;
-    const top = box.max.y + .12, bot = -.25;
-    x += i ? rh + 9 : 0; spot.position.x = x; x += rh;
-    const el = document.createElement("div"); el.className = "dlabel clabel"; el.innerHTML = `<b>${c.epithet} ${c.name}</b>`; labelsEl.appendChild(el);
-    row.push({ spot, m, el, rh, top, bot, anim, phase: Math.random() * 6.28, walk: 0, swing: 0, next: 2 + Math.random() * 2 });
+    // its extent over a whole cycle of motion, as a cylinder round the plinth's axis (it turns), then scaled into the place
+    box.makeEmpty();
+    for (let k = 0; k < 12; k++) { creaturePose(m, { ...anim, age: k * 1.9, walk: k * .79, swing: k / 11 }); spot.updateMatrixWorld(true); b1.setFromObject(spot); box.union(b1); }
+    spot.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(spot.matrixWorld).invert(); box.applyMatrix4(inv);
+    const rh = Math.max(r * 1.05, Math.hypot(Math.max(Math.abs(box.min.x), Math.abs(box.max.x)), Math.max(Math.abs(box.min.z), Math.abs(box.max.z))));
+    const k = Math.min(SLOT_R / rh, SLOT_H / Math.max(.5, box.max.y + .1), 1.6); spot.scale.setScalar(k);
+    const el = document.createElement("div"); el.className = `dlabel ${cls}`; el.innerHTML = `<b>${c.epithet} ${c.name}</b>`; labelsEl.appendChild(el);
+    return { c, m, spot, el, anim, phase: Math.random() * 6.28, walk: 0, swing: 0, next: 2 + Math.random() * 2 };
   });
   let R_; const look = new V3(), wp = new V3(), tmp = new V3();
   function layout() {
-    // Each animal framed ON ITS OWN from its real extent, so nothing overflows: on a desktop into the space right of the caption
-    // card (a region 50% of the width and 72% of the height, centred at x +0.42), on a phone above the caption sheet (90% wide, the
-    // top half). The label sits just under the plinth, inside the same region.
-    const n = st.narrow, t = Math.tan(cam.fov * Math.PI / 360), a = cam.aspect;
-    const fw = n ? .86 : .5, fh = n ? .42 : .7, cxN = n ? 0 : .42, cyN = n ? .3 : .02;
-    const stops = [];
-    row.forEach((r, i) => {
-      const halfH = (r.top - r.bot) / 2 + .18, cy = (r.top + r.bot) / 2 - .08;
-      const d = Math.max(halfH / (t * fh), r.rh / (t * a * fw)) * 1.04, cx = r.spot.position.x;
-      const lk = [cx - cxN * d * t * a, cy - cyN * d * t, 0], k = 1 / Math.hypot(.2, 1);
-      const pos = [lk[0], lk[1] + d * .2 * k, d * k];
-      const s = i / row.length, e = (i + 1) / row.length;
-      stops.push({ p: s + .18 / row.length, pos, look: lk }, { p: e - .18 / row.length, pos, look: lk });
-    });
-    stops[0].p = 0; stops[stops.length - 1].p = 1;
-    R_ = rail(stops);
+    // the one in front, framed: on a desktop right of the caption (look shifted left), on a phone above the caption sheet
+    // the front one about 40% of the height, its place a third of the width on a desktop (on a phone a little wider than the screen, neighbours cut)
+    const nw = st.narrow, t = Math.tan(cam.fov * Math.PI / 360), a = cam.aspect, d = Math.max((SLOT_H + .3) / (2 * t * (nw ? .3 : .42)), 2 * SLOT_R / (2 * t * a * (nw ? 1.15 : .36)));
+    R_ = rail([{ p: 0, pos: [0, 1.9, RAD + d], look: [nw ? 0 : -d * t * a * .42, nw ? 1.25 - d * t * .3 : 1.25, RAD - 1] },
+      { p: 1, pos: [0, 1.7, RAD + d * .97], look: [nw ? 0 : -d * t * a * .42, nw ? 1.25 - d * t * .3 : 1.25, RAD - 1] }]);
   }
   function frame(dt, t, p) {
-    R_(p, cam.position, look); cam.position.x += st.px * .4; cam.position.y += st.py * .25; cam.lookAt(look);
-    row.forEach((r, i) => {
-      r.m.rotation.y = Math.PI + .75 + Math.sin(t * .35 + r.phase) * .4;        // faces the camera (the renderer's Ry 180), turning slowly
+    R_(p, cam.position, look); cam.position.x += st.px * .6; cam.position.y += st.py * .4; cam.lookAt(look);
+    // a pause on each, then a smooth turn to the next
+    const x = p * (n - .6), i0 = Math.floor(x), f = x - i0, e = i0 + smooth(.4, 1, f);
+    ring.rotation.y = -Math.min(e, n - 1) / n * Math.PI * 2;
+    items.forEach(r => {
+      r.m.rotation.y = Math.PI + Math.sin(t * .35 + r.phase) * .45;          // facing out of the ring, turning a little
       if (r.m.userData.air) r.m.position.y = r.m.userData.air + Math.sin(t * 1.6 + r.phase) * (r.anim.fly ? .1 : .06);
-      // the game's clocks: age in ticks, the walk cycle advancing by its speed a tick; an armed Ambler swings every few seconds
       const A = r.anim; r.walk += A.speed * 20 * dt;
       if (A.holding) { r.next -= dt; if (r.next < 0) { r.swing = 1e-6; r.next = 2.5 + Math.random() * 2; } if (r.swing > 0) r.swing = r.swing + dt / .3 > 1 ? 0 : r.swing + dt / .3; }
       creaturePose(r.m, { ...A, age: (t + r.phase) * 20, walk: r.walk, swing: r.swing });
-      r.spot.getWorldPosition(wp); wp.y += r.bot; const q = project(wp, cam, tmp);
-      const on = !q.behind && q.x > -80 && q.x < innerWidth + 80;
-      r.el.style.opacity = on ? "1" : "0"; r.el.classList.toggle("on", on);
-      r.el.style.transform = `translate(${q.x}px, ${q.y + 6}px) translateX(-50%)`;
+      r.spot.getWorldPosition(wp);
+      const front = smooth(RAD * .7, RAD * .97, wp.z), q = project(wp, cam, tmp);
+      r.el.style.opacity = front.toFixed(3); r.el.classList.toggle("on", front > .05);
+      r.el.style.transform = `translate(${q.x}px, ${q.y + 18}px) translateX(-50%)`;
     });
   }
-  function show(v) { labelsEl.querySelectorAll(".clabel").forEach(e => e.style.display = v ? "" : "none"); }
+  function show(v) { labelsEl.querySelectorAll("." + cls).forEach(e => e.style.display = v ? "" : "none"); }
   return { sec, scene, cam, layout, frame, show, sky: "front" };
 }
 /* ---------------- shared input ---------------- */
@@ -2258,11 +2267,11 @@ const WORLD_LOOK = {
    opening shot before the page can be scrolled. Scenes that draw baked models also wait for journey.txt, which loads behind the hero. */
 let SYS = null;
 const sysOf = () => SYS || (SYS = buildSystem());
-function lazy(id, sky, make, needsPack) {
+function lazy(id, sky, make, needsPack, need) {
   const w = { sec: $(id), sky, s: null };
   w.ready = () => {
     if (w.s) return true;
-    if (needsPack && !JPACK) return false;
+    if ((needsPack && !JPACK) || (need && !need())) return false;
     w.s = make(); w.s.cam.aspect = innerWidth / innerHeight; w.s.cam.updateProjectionMatrix(); w.s.layout();
     return true;
   };
@@ -2273,11 +2282,11 @@ const VIEWS = {
   journey: {
     stages: [lazy("earth", "", () => sysOf().earth), lazy("site", "site", () => buildSite(), true), lazy("system", "", () => sysOf().system),
       lazy("hyper", "hyper", () => buildHyper(), true), lazy("frontier", "front", () => buildFrontier("frontier", "a")),
-      lazy("w-hazard", "world", () => buildWorld("hazard", WORLD_LOOK.hazard), true), lazy("w-rapture", "world", () => buildWorld("rapture", WORLD_LOOK.rapture), true),
+      lazy("w-hazard", "world", () => buildWorld("hazard", WORLD_LOOK.hazard), true), lazy("w-creatures", "front", () => buildCreatureCarousel(CRE, crePicks(CRE).overview, "w-creatures", "clabel-o"), false, () => CRE),
       lazy("w-eden", "world", () => buildWorld("eden", WORLD_LOOK.eden), true), lazy("w-geometry", "world", () => buildWorld("geometry", WORLD_LOOK.geometry), true)],
-    names: ["sys", "site", "sys", "hyper", "front", "world", "world", "world", "world"],
+    names: ["sys", "site", "sys", "hyper", "front", "world", "wild", "world", "world"],
     // the colour each hand-over passes through: into Earth's face is into its sky; space to space is black; a jump is a flash
-    fade: [null, "#dbeaff", "#000", "#000", "#e9f3ff", "#e9f3ff", "#e9f3ff", "#e9f3ff", "#e9f3ff"],
+    fade: [null, "#dbeaff", "#000", "#000", "#e9f3ff", "#e9f3ff", "#000", "#e9f3ff", "#e9f3ff"],
     y: 0
   },
   updates: { stages: [], names: [], fade: [], y: 0, ready: false }
@@ -2303,10 +2312,10 @@ function ensureUpdates() {
   U.loading = true; loadEl.hidden = false; loadEl.textContent = "Loading…";
   updLoad().then(D => {
     U.stages = [lazy("u-10", "site", () => buildCore(D)), lazy("u-11", "site", () => buildSite({ sec: "u-11", industry: true })),
-      lazy("u-12", "front", () => buildFrontierShow()), lazy("u-13", "hyper", () => buildEncounters(D)), lazy("u-cr", "front", () => buildCreatures(D.creatures))];
+      lazy("u-12", "front", () => buildFrontierShow()), lazy("u-13", "hyper", () => buildEncounters(D)), lazy("u-cr", "front", () => buildCreatureCarousel(D.creatures, crePicks(D.creatures).updates, "u-cr", "clabel-u"))];
     U.names = ["site", "site", "front", "hyper", "front"]; U.fade = [null, "#000", "#000", "#000", "#000"];
     U.ready = true; loadEl.hidden = true;
-    if (view === "updates") { cur = -1; resize(); }
+    if (view === "updates") { cur = -1; resize(); playUpdates(); }
   }).catch(err => { loadEl.textContent = "Could not load this tab's scenes."; console.error(err); U.loading = false; });
 }
 function setView(v, fromHash) {
@@ -2319,60 +2328,77 @@ function setView(v, fromHash) {
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === v)));
   if (v === "updates") ensureUpdates();
   resize();
-  if (!fromHash) history.replaceState(null, "", "#" + v);
+  if (!fromHash) history.replaceState(null, "", "#" + (v === "journey" ? "overview" : v));
+  if (PL) setPlaying(false);
+  PL = PLAYERS[v]; drawTicks(); playerEl.hidden = !PL.started;
   scrollTo(0, VIEWS[v].y);
+  if (v === "updates") playUpdates();
 }
 document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
 function route() {
   const h = location.hash;
-  if (h === "#updates" || /^#u-/.test(h)) { setView("updates", true); if (/^#u-/.test(h)) { const el = document.querySelector(h); el && el.scrollIntoView(); } }
-  else if (h === "#journey" || h === "") setView("journey", true);
+  if (h === "#updates" || /^#u-/.test(h)) { setView("updates", true); if (/^#u-/.test(h)) seekTo(h.slice(1)); }
+  else if (h === "#overview" || h === "#journey" || h === "") setView("journey", true);
 }
 addEventListener("hashchange", route);
 
-/* ---- the player: the Journey scrolls itself, chapter by chapter, at a set pace; nobody has to scroll ----
+/* ---- the player: each tab plays itself, chapter by chapter, at a set pace; nobody has to scroll ----
    It drives the page's own scroll position, so every scene, caption and hand-over runs exactly as it was built. Each chapter runs
-   from its section's top to the next section's top (the hand-over included). Manual scrolling is off on the Journey. */
-const PLAYER = { on: false, started: false, t: 0,
-  // seconds a chapter: Earth, the starship, the system, the galaxy, the Frontier, three worlds, the end (~1 min 40 s; principal
-  // 2026-11-12: "the journey video is too fast. make it smoother, and linger on the galaxy longer. it's especially too fast around
-  // the spherical planet." -- it had been cut to ~58 s on 2026-11-12's "accelerate the entire journey")
-  D: [5, 12, 32, 24, 9, 5, 5, 5, 5],
-  names: ["Earth", "Your starship", "The solar system", "The galaxy", "The Frontier", "Hostile worlds", "Rapture worlds", "Eden", "What will you discover?"] };
-/* Where a chapter's seconds go. A chapter's scroll runs from its section's top (p 0) to where its scene ends (p 1), then a hand-over to
-   the next section's top. By default p is spread evenly over all but the last second. A chapter with captions lists [anchor, seconds]
-   knots instead -- an element id (its p, as the scene itself reads it with anchorP) or a number -- so each caption gets the time it
-   needs rather than the share its scroll height happens to give it ("h-1*.75": three quarters of the way to that anchor); the time
-   after the last knot is the hand-over. */
-const PACE = {
-  1: [[0, 0], ["l-1", 4.5], ["l-3", 7.5], ["l-4", 10], [1, 11]],
-  // the system, then the spherical planet: the core, no wrong way up, jump anywhere, each given time to read and watch
-  2: [[0, 0], ["s-c0", 8], ["s-c1", 13.5], ["s-c2", 19], ["s-c3", 24.5], ["s-out", 28], [1, 30.5]],
-  // the galaxy opens out and is held (the overview is reached at 3/4 of the way to h-1), then the jump
-  3: [[0, 0], ["h-1*.75", 9], ["h-1", 15], [1, 22.5]],
-  4: [[0, 0], ["f-p1", 3], ["f-p2", 6], [1, 8]]
+   from its section's top to the next section's top (the hand-over included). Manual scrolling is off on both tabs. Each tab keeps
+   its own film and place in it; the bar shows the one in front. The Overview starts on its Start button, Updates as it opens
+   (principal 2026-11-12: "make the updates page a video thing as well"). */
+const PLAYERS = {
+  journey: { on: false, started: false, t: 0, lead: 0,
+    // seconds a chapter: Earth, the starship, the system, the galaxy, the Frontier, a hostile world, the wildlife carousel, Eden, the
+    // end (principal 2026-11-12: "the journey video is too fast ... linger on the galaxy longer"; the Rapture world's place went to
+    // eight creatures the same day: "don't show the rapture world, so take its place with the creatures")
+    D: [5, 12, 32, 24, 9, 5, 20, 5, 5],
+    names: ["Earth", "Your starship", "The solar system", "The galaxy", "The Frontier", "Hostile worlds", "Wildlife", "Eden", "What will you discover?"],
+    /* Where a chapter's seconds go. A chapter's scroll runs from its section's top (p 0) to where its scene ends (p 1), then a
+       hand-over to the next section's top. By default p is spread evenly over all but the last second. A chapter with captions lists
+       [anchor, seconds] knots instead -- an element id (its p, as the scene itself reads it with anchorP) or a number -- so each
+       caption gets the time it needs rather than the share its scroll height happens to give it ("h-1*.75": three quarters of the
+       way to that anchor); the time after the last knot is the hand-over. */
+    PACE: {
+      1: [[0, 0], ["l-1", 4.5], ["l-3", 7.5], ["l-4", 10], [1, 11]],
+      // the system, then the spherical planet: the core, no wrong way up, jump anywhere, each given time to read and watch
+      2: [[0, 0], ["s-c0", 8], ["s-c1", 13.5], ["s-c2", 19], ["s-c3", 24.5], ["s-out", 28], [1, 30.5]],
+      // the galaxy opens out and is held (the overview is reached at 3/4 of the way to h-1), then fades into the jump
+      3: [[0, 0], ["h-1*.75", 9], ["h-1", 15], [1, 22.5]],
+      4: [[0, 0], ["f-p1", 3], ["f-p2", 6], [1, 8]]
+    } },
+  // Updates: three seconds on the list of updates (the lead), then each update; the creatures' ring gets the time eight need
+  updates: { on: false, started: false, t: 0, lead: 3,
+    D: [10, 10, 12, 12, 21],
+    names: ["The Core Update", "The Industry Update", "The Frontier Update", "The Encounters Update", "The Creatures Update"],
+    PACE: {} }
 };
+let PL = PLAYERS.journey;
 const ppEl = $("pp"), trackEl = $("track"), fillEl = $("fill"), playerEl = $("player");
-const TOTAL = PLAYER.D.reduce((a, b) => a + b, 0);
-function chapterStart(i) { return PLAYER.D.slice(0, i).reduce((a, b) => a + b, 0); }
-$("ticks").innerHTML = PLAYER.names.map((n, i) => `<i style="left:${(chapterStart(i) / TOTAL * 100).toFixed(2)}%" title="${n}"></i>`).join("");
+const total = () => PL.lead + PL.D.reduce((a, b) => a + b, 0);
+function chapterStart(i) { return PL.lead + PL.D.slice(0, i).reduce((a, b) => a + b, 0); }
+function drawTicks() { $("ticks").innerHTML = PL.names.map((n, i) => `<i style="left:${(chapterStart(i) / total() * 100).toFixed(2)}%" title="${n}"></i>`).join(""); $("chap").textContent = ""; }
+drawTicks();
 // p of the chapter at local time u (seconds), or null once p has reached 1 and the hand-over is running
 function paceP(i, sec, u, d) {
   const at = a => { if (typeof a === "number") return a; const [id, k] = a.split("*"); return anchorP(sec, $(id)) * (k ? +k : 1); };
-  const K = PACE[i] ? PACE[i].map(([a, s]) => [at(a), s]) : [[0, 0], [1, Math.max(d - 1, d * .8)]];
+  const K = PL.PACE[i] ? PL.PACE[i].map(([a, s]) => [at(a), s]) : [[0, 0], [1, Math.max(d - 1, d * .8)]];
   const last = K[K.length - 1];
   if (u >= last[1]) return null;
   let j = 0; while (j < K.length - 2 && u > K[j + 1][1]) j++;
   const [p0, s0] = K[j], [p1, s1] = K[j + 1];
   return p0 + (p1 - p0) * clamp((u - s0) / Math.max(1e-6, s1 - s0));
 }
-function handOver(i, d) { const K = PACE[i]; return K ? K[K.length - 1][1] : Math.max(d - 1, d * .8); }
+function handOver(i, d) { const K = PL.PACE[i]; return K ? K[K.length - 1][1] : Math.max(d - 1, d * .8); }
 function yAt(t) {
-  const S = VIEWS.journey.stages, end = document.documentElement.scrollHeight - innerHeight;
-  let a = 0;
+  const S = VIEWS[view].stages, end = document.documentElement.scrollHeight - innerHeight;
+  if (!S.length) return 0;
+  // the lead: hold on what is above the first chapter (the Updates list), then scroll down to it
+  if (t < PL.lead) return Math.min(end, S[0].sec.offsetTop * smooth(PL.lead * .55, PL.lead, t));
+  let a = PL.lead;
   for (let i = 0; i < S.length; i++) {
     const sec = S[i].sec, y0 = sec.offsetTop, h = Math.max(1, sec.offsetHeight - innerHeight);
-    const y1 = i < S.length - 1 ? S[i + 1].sec.offsetTop : end, d = PLAYER.D[i];
+    const y1 = i < S.length - 1 ? S[i + 1].sec.offsetTop : end, d = PL.D[i];
     if (t <= a + d || i === S.length - 1) {
       const u = t - a, p = paceP(i, sec, u, d);
       if (p !== null) return Math.min(end, y0 + h * p);
@@ -2384,40 +2410,56 @@ function yAt(t) {
   return end;
 }
 function setPlaying(on) {
-  PLAYER.on = on; ppEl.classList.toggle("paused", !on); ppEl.setAttribute("aria-label", on ? "Pause" : "Play");
+  PL.on = on; ppEl.classList.toggle("paused", !on); ppEl.setAttribute("aria-label", on ? "Pause" : "Play");
 }
-function startJourney(from = 0) {
-  PLAYER.started = true; PLAYER.t = from; playerEl.hidden = false; setPlaying(true);
+function startPlay(from = 0) {
+  PL.started = true; PL.t = from; playerEl.hidden = false; setPlaying(true);
 }
-function seek(t) { PLAYER.t = clamp(t, 0, TOTAL); scrollTo(0, yAt(PLAYER.t)); }
-$("play").addEventListener("click", () => startJourney(0));
-if (window.__wantPlay) { $("play").classList.remove("busy"); $("play").lastChild.textContent = "Start the journey"; startJourney(0); }   // pressed while loading
-$("replay").addEventListener("click", () => startJourney(0));
-ppEl.addEventListener("click", () => { if (PLAYER.t >= TOTAL) startJourney(0); else setPlaying(!PLAYER.on); });
-function trackAt(e) { const r = trackEl.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width) * TOTAL; }
+// Updates plays as it opens (once its scenes are in), and carries on from where it was if you come back to it
+function playUpdates() {
+  if (view !== "updates" || !VIEWS.updates.ready) return;
+  if (!PL.started) startPlay(PL.pending || 0); else if (PL.t < total()) setPlaying(true);
+  if (PL.pending) { seek(PL.pending); PL.pending = 0; }
+}
+// a chapter by its section's id (the Updates list's links, a #u-… address)
+const UPD_IDS = ["u-10", "u-11", "u-12", "u-13", "u-cr"];
+function seekTo(id) {
+  const i = UPD_IDS.indexOf(id); if (i < 0 || view !== "updates") return;
+  if (!VIEWS.updates.ready) { PL.pending = chapterStart(i); return; }     // played from there once the scenes are in
+  if (!PL.started) startPlay(chapterStart(i)); else seek(chapterStart(i));
+}
+document.querySelectorAll(".u-list a").forEach(a => a.addEventListener("click", e => { e.preventDefault(); seekTo(a.getAttribute("href").slice(1)); setPlaying(true); }));
+function seek(t) { PL.t = clamp(t, 0, total()); scrollTo(0, yAt(PL.t)); }
+$("play").addEventListener("click", () => startPlay(0));
+if (window.__wantPlay) { $("play").classList.remove("busy"); $("play").lastChild.textContent = "Start the journey"; startPlay(0); }   // pressed while loading
+$("replay").addEventListener("click", () => startPlay(0));
+ppEl.addEventListener("click", () => { if (PL.t >= total()) startPlay(0); else setPlaying(!PL.on); });
+function trackAt(e) { const r = trackEl.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width) * total(); }
 trackEl.addEventListener("pointerdown", e => { trackEl.setPointerCapture(e.pointerId); seek(trackAt(e)); trackEl.dataset.drag = "1"; });
 trackEl.addEventListener("pointermove", e => { if (trackEl.dataset.drag) seek(trackAt(e)); });
 trackEl.addEventListener("pointerup", () => { delete trackEl.dataset.drag; });
-const chapterOf = t => { let i = 0; while (i < PLAYER.D.length - 1 && t >= chapterStart(i + 1)) i++; return i; };
+const chapterOf = t => { let i = 0; while (i < PL.D.length - 1 && t >= chapterStart(i + 1)) i++; return i; };
 addEventListener("keydown", e => {
-  if (view !== "journey" || !PLAYER.started || /input|textarea/i.test(e.target.tagName)) return;
+  if (!PL.started || /input|textarea/i.test(e.target.tagName)) return;
   if (e.code === "Space") { e.preventDefault(); ppEl.click(); }
-  else if (e.code === "ArrowRight") { e.preventDefault(); seek(chapterStart(Math.min(PLAYER.D.length - 1, chapterOf(PLAYER.t) + 1))); }
-  else if (e.code === "ArrowLeft") { e.preventDefault(); const i = chapterOf(PLAYER.t); seek(chapterStart(PLAYER.t - chapterStart(i) > 2 ? i : Math.max(0, i - 1))); }
+  else if (e.code === "ArrowRight") { e.preventDefault(); seek(chapterStart(Math.min(PL.D.length - 1, chapterOf(PL.t) + 1))); }
+  else if (e.code === "ArrowLeft") { e.preventDefault(); const i = chapterOf(PL.t); seek(PL.t - chapterStart(i) > 2 ? chapterStart(i) : (i ? chapterStart(i - 1) : 0)); }
 });
-// no manual scrolling on the Journey: wheel, touch and scroll keys do nothing there (the Updates tab still scrolls)
-const noScroll = e => { if (view === "journey") e.preventDefault(); };
+// no manual scrolling on either tab: wheel, touch and scroll keys do nothing
+const noScroll = e => e.preventDefault();
 addEventListener("wheel", noScroll, { passive: false });
-addEventListener("touchmove", e => { if (view === "journey" && !e.target.closest("#track")) e.preventDefault(); }, { passive: false });
-addEventListener("keydown", e => { if (view === "journey" && ["PageDown", "PageUp", "ArrowDown", "ArrowUp", "Home", "End"].includes(e.code)) e.preventDefault(); });
+addEventListener("touchmove", e => { if (!e.target.closest("#track")) e.preventDefault(); }, { passive: false });
+addEventListener("keydown", e => { if (["PageDown", "PageUp", "ArrowDown", "ArrowUp", "Home", "End"].includes(e.code)) e.preventDefault(); });
 function playerTick(dt) {
-  HTML.classList.toggle("lock", view === "journey");
-  if (view !== "journey") { if (PLAYER.on) setPlaying(false); return; }
-  if (PLAYER.on) { PLAYER.t += dt; if (PLAYER.t >= TOTAL) { PLAYER.t = TOTAL; setPlaying(false); } scrollTo(0, yAt(PLAYER.t)); }
-  else if (!PLAYER.started && scrollY !== 0) scrollTo(0, 0);
-  const f = PLAYER.t / TOTAL; fillEl.style.width = (f * 100).toFixed(2) + "%"; trackEl.setAttribute("aria-valuenow", Math.round(f * 100));
-  const name = PLAYER.names[chapterOf(PLAYER.t)]; if ($("chap").textContent !== name) { $("chap").textContent = name; trackEl.setAttribute("aria-valuetext", name); }
+  HTML.classList.add("lock");
+  if (PL.on) { PL.t += dt; if (PL.t >= total()) { PL.t = total(); setPlaying(false); } scrollTo(0, yAt(PL.t)); }
+  else if (!PL.started && scrollY !== 0) scrollTo(0, 0);
+  const f = PL.t / total(); fillEl.style.width = (f * 100).toFixed(2) + "%"; trackEl.setAttribute("aria-valuenow", Math.round(f * 100));
+  const name = PL.t < PL.lead ? "Updates" : PL.names[chapterOf(PL.t)];
+  if ($("chap").textContent !== name) { $("chap").textContent = name; trackEl.setAttribute("aria-valuetext", name); }
 }
+// the creatures load once the Overview's own scenes have, for its wildlife carousel
+creLoad().catch(err => console.error(err));
 resize(); route();
 
 const clock = new THREE.Clock(); let T = HEROSTATE.t;     // the opening shot's clock carries on, so Luneus is where it was

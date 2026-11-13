@@ -879,11 +879,11 @@ const WORLD_LOOK = {
    opening shot before the page can be scrolled. Scenes that draw baked models also wait for journey.txt, which loads behind the hero. */
 let SYS = null;
 const sysOf = () => SYS || (SYS = buildSystem());
-function lazy(id, sky, make, needsPack) {
+function lazy(id, sky, make, needsPack, need) {
   const w = { sec: $(id), sky, s: null };
   w.ready = () => {
     if (w.s) return true;
-    if (needsPack && !JPACK) return false;
+    if ((needsPack && !JPACK) || (need && !need())) return false;
     w.s = make(); w.s.cam.aspect = innerWidth / innerHeight; w.s.cam.updateProjectionMatrix(); w.s.layout();
     return true;
   };
@@ -894,11 +894,11 @@ const VIEWS = {
   journey: {
     stages: [lazy("earth", "", () => sysOf().earth), lazy("site", "site", () => buildSite(), true), lazy("system", "", () => sysOf().system),
       lazy("hyper", "hyper", () => buildHyper(), true), lazy("frontier", "front", () => buildFrontier("frontier", "a")),
-      lazy("w-hazard", "world", () => buildWorld("hazard", WORLD_LOOK.hazard), true), lazy("w-rapture", "world", () => buildWorld("rapture", WORLD_LOOK.rapture), true),
+      lazy("w-hazard", "world", () => buildWorld("hazard", WORLD_LOOK.hazard), true), lazy("w-creatures", "front", () => buildCreatureCarousel(CRE, crePicks(CRE).overview, "w-creatures", "clabel-o"), false, () => CRE),
       lazy("w-eden", "world", () => buildWorld("eden", WORLD_LOOK.eden), true), lazy("w-geometry", "world", () => buildWorld("geometry", WORLD_LOOK.geometry), true)],
-    names: ["sys", "site", "sys", "hyper", "front", "world", "world", "world", "world"],
+    names: ["sys", "site", "sys", "hyper", "front", "world", "wild", "world", "world"],
     // the colour each hand-over passes through: into Earth's face is into its sky; space to space is black; a jump is a flash
-    fade: [null, "#dbeaff", "#000", "#000", "#e9f3ff", "#e9f3ff", "#e9f3ff", "#e9f3ff", "#e9f3ff"],
+    fade: [null, "#dbeaff", "#000", "#000", "#e9f3ff", "#e9f3ff", "#000", "#e9f3ff", "#e9f3ff"],
     y: 0
   },
   updates: { stages: [], names: [], fade: [], y: 0, ready: false }
@@ -924,10 +924,10 @@ function ensureUpdates() {
   U.loading = true; loadEl.hidden = false; loadEl.textContent = "Loading…";
   updLoad().then(D => {
     U.stages = [lazy("u-10", "site", () => buildCore(D)), lazy("u-11", "site", () => buildSite({ sec: "u-11", industry: true })),
-      lazy("u-12", "front", () => buildFrontierShow()), lazy("u-13", "hyper", () => buildEncounters(D)), lazy("u-cr", "front", () => buildCreatures(D.creatures))];
+      lazy("u-12", "front", () => buildFrontierShow()), lazy("u-13", "hyper", () => buildEncounters(D)), lazy("u-cr", "front", () => buildCreatureCarousel(D.creatures, crePicks(D.creatures).updates, "u-cr", "clabel-u"))];
     U.names = ["site", "site", "front", "hyper", "front"]; U.fade = [null, "#000", "#000", "#000", "#000"];
     U.ready = true; loadEl.hidden = true;
-    if (view === "updates") { cur = -1; resize(); }
+    if (view === "updates") { cur = -1; resize(); playUpdates(); }
   }).catch(err => { loadEl.textContent = "Could not load this tab's scenes."; console.error(err); U.loading = false; });
 }
 function setView(v, fromHash) {
@@ -940,60 +940,77 @@ function setView(v, fromHash) {
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === v)));
   if (v === "updates") ensureUpdates();
   resize();
-  if (!fromHash) history.replaceState(null, "", "#" + v);
+  if (!fromHash) history.replaceState(null, "", "#" + (v === "journey" ? "overview" : v));
+  if (PL) setPlaying(false);
+  PL = PLAYERS[v]; drawTicks(); playerEl.hidden = !PL.started;
   scrollTo(0, VIEWS[v].y);
+  if (v === "updates") playUpdates();
 }
 document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
 function route() {
   const h = location.hash;
-  if (h === "#updates" || /^#u-/.test(h)) { setView("updates", true); if (/^#u-/.test(h)) { const el = document.querySelector(h); el && el.scrollIntoView(); } }
-  else if (h === "#journey" || h === "") setView("journey", true);
+  if (h === "#updates" || /^#u-/.test(h)) { setView("updates", true); if (/^#u-/.test(h)) seekTo(h.slice(1)); }
+  else if (h === "#overview" || h === "#journey" || h === "") setView("journey", true);
 }
 addEventListener("hashchange", route);
 
-/* ---- the player: the Journey scrolls itself, chapter by chapter, at a set pace; nobody has to scroll ----
+/* ---- the player: each tab plays itself, chapter by chapter, at a set pace; nobody has to scroll ----
    It drives the page's own scroll position, so every scene, caption and hand-over runs exactly as it was built. Each chapter runs
-   from its section's top to the next section's top (the hand-over included). Manual scrolling is off on the Journey. */
-const PLAYER = { on: false, started: false, t: 0,
-  // seconds a chapter: Earth, the starship, the system, the galaxy, the Frontier, three worlds, the end (~1 min 40 s; principal
-  // 2026-11-12: "the journey video is too fast. make it smoother, and linger on the galaxy longer. it's especially too fast around
-  // the spherical planet." -- it had been cut to ~58 s on 2026-11-12's "accelerate the entire journey")
-  D: [5, 12, 32, 24, 9, 5, 5, 5, 5],
-  names: ["Earth", "Your starship", "The solar system", "The galaxy", "The Frontier", "Hostile worlds", "Rapture worlds", "Eden", "What will you discover?"] };
-/* Where a chapter's seconds go. A chapter's scroll runs from its section's top (p 0) to where its scene ends (p 1), then a hand-over to
-   the next section's top. By default p is spread evenly over all but the last second. A chapter with captions lists [anchor, seconds]
-   knots instead -- an element id (its p, as the scene itself reads it with anchorP) or a number -- so each caption gets the time it
-   needs rather than the share its scroll height happens to give it ("h-1*.75": three quarters of the way to that anchor); the time
-   after the last knot is the hand-over. */
-const PACE = {
-  1: [[0, 0], ["l-1", 4.5], ["l-3", 7.5], ["l-4", 10], [1, 11]],
-  // the system, then the spherical planet: the core, no wrong way up, jump anywhere, each given time to read and watch
-  2: [[0, 0], ["s-c0", 8], ["s-c1", 13.5], ["s-c2", 19], ["s-c3", 24.5], ["s-out", 28], [1, 30.5]],
-  // the galaxy opens out and is held (the overview is reached at 3/4 of the way to h-1), then the jump
-  3: [[0, 0], ["h-1*.75", 9], ["h-1", 15], [1, 22.5]],
-  4: [[0, 0], ["f-p1", 3], ["f-p2", 6], [1, 8]]
+   from its section's top to the next section's top (the hand-over included). Manual scrolling is off on both tabs. Each tab keeps
+   its own film and place in it; the bar shows the one in front. The Overview starts on its Start button, Updates as it opens
+   (principal 2026-11-12: "make the updates page a video thing as well"). */
+const PLAYERS = {
+  journey: { on: false, started: false, t: 0, lead: 0,
+    // seconds a chapter: Earth, the starship, the system, the galaxy, the Frontier, a hostile world, the wildlife carousel, Eden, the
+    // end (principal 2026-11-12: "the journey video is too fast ... linger on the galaxy longer"; the Rapture world's place went to
+    // eight creatures the same day: "don't show the rapture world, so take its place with the creatures")
+    D: [5, 12, 32, 24, 9, 5, 20, 5, 5],
+    names: ["Earth", "Your starship", "The solar system", "The galaxy", "The Frontier", "Hostile worlds", "Wildlife", "Eden", "What will you discover?"],
+    /* Where a chapter's seconds go. A chapter's scroll runs from its section's top (p 0) to where its scene ends (p 1), then a
+       hand-over to the next section's top. By default p is spread evenly over all but the last second. A chapter with captions lists
+       [anchor, seconds] knots instead -- an element id (its p, as the scene itself reads it with anchorP) or a number -- so each
+       caption gets the time it needs rather than the share its scroll height happens to give it ("h-1*.75": three quarters of the
+       way to that anchor); the time after the last knot is the hand-over. */
+    PACE: {
+      1: [[0, 0], ["l-1", 4.5], ["l-3", 7.5], ["l-4", 10], [1, 11]],
+      // the system, then the spherical planet: the core, no wrong way up, jump anywhere, each given time to read and watch
+      2: [[0, 0], ["s-c0", 8], ["s-c1", 13.5], ["s-c2", 19], ["s-c3", 24.5], ["s-out", 28], [1, 30.5]],
+      // the galaxy opens out and is held (the overview is reached at 3/4 of the way to h-1), then fades into the jump
+      3: [[0, 0], ["h-1*.75", 9], ["h-1", 15], [1, 22.5]],
+      4: [[0, 0], ["f-p1", 3], ["f-p2", 6], [1, 8]]
+    } },
+  // Updates: three seconds on the list of updates (the lead), then each update; the creatures' ring gets the time eight need
+  updates: { on: false, started: false, t: 0, lead: 3,
+    D: [10, 10, 12, 12, 21],
+    names: ["The Core Update", "The Industry Update", "The Frontier Update", "The Encounters Update", "The Creatures Update"],
+    PACE: {} }
 };
+let PL = PLAYERS.journey;
 const ppEl = $("pp"), trackEl = $("track"), fillEl = $("fill"), playerEl = $("player");
-const TOTAL = PLAYER.D.reduce((a, b) => a + b, 0);
-function chapterStart(i) { return PLAYER.D.slice(0, i).reduce((a, b) => a + b, 0); }
-$("ticks").innerHTML = PLAYER.names.map((n, i) => `<i style="left:${(chapterStart(i) / TOTAL * 100).toFixed(2)}%" title="${n}"></i>`).join("");
+const total = () => PL.lead + PL.D.reduce((a, b) => a + b, 0);
+function chapterStart(i) { return PL.lead + PL.D.slice(0, i).reduce((a, b) => a + b, 0); }
+function drawTicks() { $("ticks").innerHTML = PL.names.map((n, i) => `<i style="left:${(chapterStart(i) / total() * 100).toFixed(2)}%" title="${n}"></i>`).join(""); $("chap").textContent = ""; }
+drawTicks();
 // p of the chapter at local time u (seconds), or null once p has reached 1 and the hand-over is running
 function paceP(i, sec, u, d) {
   const at = a => { if (typeof a === "number") return a; const [id, k] = a.split("*"); return anchorP(sec, $(id)) * (k ? +k : 1); };
-  const K = PACE[i] ? PACE[i].map(([a, s]) => [at(a), s]) : [[0, 0], [1, Math.max(d - 1, d * .8)]];
+  const K = PL.PACE[i] ? PL.PACE[i].map(([a, s]) => [at(a), s]) : [[0, 0], [1, Math.max(d - 1, d * .8)]];
   const last = K[K.length - 1];
   if (u >= last[1]) return null;
   let j = 0; while (j < K.length - 2 && u > K[j + 1][1]) j++;
   const [p0, s0] = K[j], [p1, s1] = K[j + 1];
   return p0 + (p1 - p0) * clamp((u - s0) / Math.max(1e-6, s1 - s0));
 }
-function handOver(i, d) { const K = PACE[i]; return K ? K[K.length - 1][1] : Math.max(d - 1, d * .8); }
+function handOver(i, d) { const K = PL.PACE[i]; return K ? K[K.length - 1][1] : Math.max(d - 1, d * .8); }
 function yAt(t) {
-  const S = VIEWS.journey.stages, end = document.documentElement.scrollHeight - innerHeight;
-  let a = 0;
+  const S = VIEWS[view].stages, end = document.documentElement.scrollHeight - innerHeight;
+  if (!S.length) return 0;
+  // the lead: hold on what is above the first chapter (the Updates list), then scroll down to it
+  if (t < PL.lead) return Math.min(end, S[0].sec.offsetTop * smooth(PL.lead * .55, PL.lead, t));
+  let a = PL.lead;
   for (let i = 0; i < S.length; i++) {
     const sec = S[i].sec, y0 = sec.offsetTop, h = Math.max(1, sec.offsetHeight - innerHeight);
-    const y1 = i < S.length - 1 ? S[i + 1].sec.offsetTop : end, d = PLAYER.D[i];
+    const y1 = i < S.length - 1 ? S[i + 1].sec.offsetTop : end, d = PL.D[i];
     if (t <= a + d || i === S.length - 1) {
       const u = t - a, p = paceP(i, sec, u, d);
       if (p !== null) return Math.min(end, y0 + h * p);
@@ -1005,40 +1022,56 @@ function yAt(t) {
   return end;
 }
 function setPlaying(on) {
-  PLAYER.on = on; ppEl.classList.toggle("paused", !on); ppEl.setAttribute("aria-label", on ? "Pause" : "Play");
+  PL.on = on; ppEl.classList.toggle("paused", !on); ppEl.setAttribute("aria-label", on ? "Pause" : "Play");
 }
-function startJourney(from = 0) {
-  PLAYER.started = true; PLAYER.t = from; playerEl.hidden = false; setPlaying(true);
+function startPlay(from = 0) {
+  PL.started = true; PL.t = from; playerEl.hidden = false; setPlaying(true);
 }
-function seek(t) { PLAYER.t = clamp(t, 0, TOTAL); scrollTo(0, yAt(PLAYER.t)); }
-$("play").addEventListener("click", () => startJourney(0));
-if (window.__wantPlay) { $("play").classList.remove("busy"); $("play").lastChild.textContent = "Start the journey"; startJourney(0); }   // pressed while loading
-$("replay").addEventListener("click", () => startJourney(0));
-ppEl.addEventListener("click", () => { if (PLAYER.t >= TOTAL) startJourney(0); else setPlaying(!PLAYER.on); });
-function trackAt(e) { const r = trackEl.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width) * TOTAL; }
+// Updates plays as it opens (once its scenes are in), and carries on from where it was if you come back to it
+function playUpdates() {
+  if (view !== "updates" || !VIEWS.updates.ready) return;
+  if (!PL.started) startPlay(PL.pending || 0); else if (PL.t < total()) setPlaying(true);
+  if (PL.pending) { seek(PL.pending); PL.pending = 0; }
+}
+// a chapter by its section's id (the Updates list's links, a #u-… address)
+const UPD_IDS = ["u-10", "u-11", "u-12", "u-13", "u-cr"];
+function seekTo(id) {
+  const i = UPD_IDS.indexOf(id); if (i < 0 || view !== "updates") return;
+  if (!VIEWS.updates.ready) { PL.pending = chapterStart(i); return; }     // played from there once the scenes are in
+  if (!PL.started) startPlay(chapterStart(i)); else seek(chapterStart(i));
+}
+document.querySelectorAll(".u-list a").forEach(a => a.addEventListener("click", e => { e.preventDefault(); seekTo(a.getAttribute("href").slice(1)); setPlaying(true); }));
+function seek(t) { PL.t = clamp(t, 0, total()); scrollTo(0, yAt(PL.t)); }
+$("play").addEventListener("click", () => startPlay(0));
+if (window.__wantPlay) { $("play").classList.remove("busy"); $("play").lastChild.textContent = "Start the journey"; startPlay(0); }   // pressed while loading
+$("replay").addEventListener("click", () => startPlay(0));
+ppEl.addEventListener("click", () => { if (PL.t >= total()) startPlay(0); else setPlaying(!PL.on); });
+function trackAt(e) { const r = trackEl.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width) * total(); }
 trackEl.addEventListener("pointerdown", e => { trackEl.setPointerCapture(e.pointerId); seek(trackAt(e)); trackEl.dataset.drag = "1"; });
 trackEl.addEventListener("pointermove", e => { if (trackEl.dataset.drag) seek(trackAt(e)); });
 trackEl.addEventListener("pointerup", () => { delete trackEl.dataset.drag; });
-const chapterOf = t => { let i = 0; while (i < PLAYER.D.length - 1 && t >= chapterStart(i + 1)) i++; return i; };
+const chapterOf = t => { let i = 0; while (i < PL.D.length - 1 && t >= chapterStart(i + 1)) i++; return i; };
 addEventListener("keydown", e => {
-  if (view !== "journey" || !PLAYER.started || /input|textarea/i.test(e.target.tagName)) return;
+  if (!PL.started || /input|textarea/i.test(e.target.tagName)) return;
   if (e.code === "Space") { e.preventDefault(); ppEl.click(); }
-  else if (e.code === "ArrowRight") { e.preventDefault(); seek(chapterStart(Math.min(PLAYER.D.length - 1, chapterOf(PLAYER.t) + 1))); }
-  else if (e.code === "ArrowLeft") { e.preventDefault(); const i = chapterOf(PLAYER.t); seek(chapterStart(PLAYER.t - chapterStart(i) > 2 ? i : Math.max(0, i - 1))); }
+  else if (e.code === "ArrowRight") { e.preventDefault(); seek(chapterStart(Math.min(PL.D.length - 1, chapterOf(PL.t) + 1))); }
+  else if (e.code === "ArrowLeft") { e.preventDefault(); const i = chapterOf(PL.t); seek(PL.t - chapterStart(i) > 2 ? chapterStart(i) : (i ? chapterStart(i - 1) : 0)); }
 });
-// no manual scrolling on the Journey: wheel, touch and scroll keys do nothing there (the Updates tab still scrolls)
-const noScroll = e => { if (view === "journey") e.preventDefault(); };
+// no manual scrolling on either tab: wheel, touch and scroll keys do nothing
+const noScroll = e => e.preventDefault();
 addEventListener("wheel", noScroll, { passive: false });
-addEventListener("touchmove", e => { if (view === "journey" && !e.target.closest("#track")) e.preventDefault(); }, { passive: false });
-addEventListener("keydown", e => { if (view === "journey" && ["PageDown", "PageUp", "ArrowDown", "ArrowUp", "Home", "End"].includes(e.code)) e.preventDefault(); });
+addEventListener("touchmove", e => { if (!e.target.closest("#track")) e.preventDefault(); }, { passive: false });
+addEventListener("keydown", e => { if (["PageDown", "PageUp", "ArrowDown", "ArrowUp", "Home", "End"].includes(e.code)) e.preventDefault(); });
 function playerTick(dt) {
-  HTML.classList.toggle("lock", view === "journey");
-  if (view !== "journey") { if (PLAYER.on) setPlaying(false); return; }
-  if (PLAYER.on) { PLAYER.t += dt; if (PLAYER.t >= TOTAL) { PLAYER.t = TOTAL; setPlaying(false); } scrollTo(0, yAt(PLAYER.t)); }
-  else if (!PLAYER.started && scrollY !== 0) scrollTo(0, 0);
-  const f = PLAYER.t / TOTAL; fillEl.style.width = (f * 100).toFixed(2) + "%"; trackEl.setAttribute("aria-valuenow", Math.round(f * 100));
-  const name = PLAYER.names[chapterOf(PLAYER.t)]; if ($("chap").textContent !== name) { $("chap").textContent = name; trackEl.setAttribute("aria-valuetext", name); }
+  HTML.classList.add("lock");
+  if (PL.on) { PL.t += dt; if (PL.t >= total()) { PL.t = total(); setPlaying(false); } scrollTo(0, yAt(PL.t)); }
+  else if (!PL.started && scrollY !== 0) scrollTo(0, 0);
+  const f = PL.t / total(); fillEl.style.width = (f * 100).toFixed(2) + "%"; trackEl.setAttribute("aria-valuenow", Math.round(f * 100));
+  const name = PL.t < PL.lead ? "Updates" : PL.names[chapterOf(PL.t)];
+  if ($("chap").textContent !== name) { $("chap").textContent = name; trackEl.setAttribute("aria-valuetext", name); }
 }
+// the creatures load once the Overview's own scenes have, for its wildlife carousel
+creLoad().catch(err => console.error(err));
 resize(); route();
 
 const clock = new THREE.Clock(); let T = HEROSTATE.t;     // the opening shot's clock carries on, so Luneus is where it was

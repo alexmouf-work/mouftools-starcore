@@ -1,10 +1,15 @@
 /* =================================== THE UPDATES TAB =================================== */
 /* Its geometry is fetched the first time the tab opens: real dumps (an Overworld patch, a mini cluster, an asteroid field, a Lab
    station) and the sky planets PlanetFeature builds, baked and packed like the Journey's (see quadGeo), on the same texture sheet. */
-let UPD = null;
+let UPD = null, CREP = null, CRE = null;
+// the creatures, shared by both tabs: fetched once, by whichever wants them first (CRE is set when they land)
+function creLoad() {
+  if (!CREP) CREP = Promise.all([getOk("creatures.json").then(r => r.json()), loadImg("creatures.webp")]).then(([data, img]) => (CRE = { data, img }));
+  return CREP;
+}
 function updLoad() {
-  if (!UPD) UPD = Promise.all([getOk("updates.json").then(r => r.json()), inflate("updates.txt"), getOk("creatures.json").then(r => r.json()), loadImg("creatures.webp")])
-    .then(([meta, bin, cj, cimg]) => Object.assign(quadPack(meta, bin), { creatures: { data: cj, img: cimg } }));
+  if (!UPD) UPD = Promise.all([getOk("updates.json").then(r => r.json()), inflate("updates.txt"), creLoad()])
+    .then(([meta, bin, cre]) => Object.assign(quadPack(meta, bin), { creatures: cre }));
   return UPD;
 }
 function updMesh(D, gname, mats) { return quadMesh(D, gname, mats); }
@@ -273,80 +278,84 @@ function creaturePose(m, s) {
   if (ar && s.holding) { ar.rotation.x = ar.rotation.x * .5 - Math.PI / 10; ar.rotation.x -= Math.sin(s.swing * Math.PI) * 1.2; }
   if (s.hop) { const lift = 2 * Math.abs(Math.sin(s.walk)) * s.speed; U.parts.forEach(g => { if (!g.parent || g.parent.parent === m) g.position.y -= lift; }); }
 }
-function buildCreatures(C) {
-  const sec = $("u-cr"), scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(36, 1, .05, 500);
+/* Which creatures each tab shows, chosen once a visit (principal 2026-11-12: the Overview shows "another 8 random creatures ...
+   different to the ones shown in the update page"). Updates: the saved Ambler with its weapon, one flier, six more species. Overview:
+   a second flier and the species Updates left out, then, since there are fifteen species for sixteen places, the other individual of
+   one Updates species. No individual appears twice. */
+function crePicks(C) {
+  if (C.picks) return C.picks;
+  const shuf = a => a.map(v => [Math.random(), v]).sort((p, q) => p[0] - q[0]).map(p => p[1]);
+  const all = C.data.creatures, bySp = {}; all.forEach(c => (bySp[c.species] = bySp[c.species] || []).push(c));
+  const ambler = all.find(c => c.held), fliers = shuf(all.filter(c => c.winged));
+  const upd = [ambler, fliers[0]].filter(Boolean), used = new Set(upd), spU = new Set(upd.map(c => c.species));
+  for (const sp of shuf(Object.keys(bySp))) { if (upd.length >= 8) break; if (spU.has(sp)) continue; const c = shuf(bySp[sp])[0]; upd.push(c); used.add(c); spU.add(sp); }
+  const ov = [], spO = new Set(), take = c => { ov.push(c); used.add(c); spO.add(c.species); };
+  const f2 = fliers.find(c => !used.has(c)); if (f2) take(f2);
+  for (const sp of shuf(Object.keys(bySp))) { if (ov.length >= 8) break; if (spU.has(sp) || spO.has(sp)) continue; take(shuf(bySp[sp])[0]); }
+  for (const c of shuf(all)) { if (ov.length >= 8) break; if (!used.has(c) && !spO.has(c.species)) take(c); }
+  return (C.picks = { updates: shuf(upd), overview: shuf(ov) });
+}
+/* Eight creatures on a turning ring, the Frontier update's planet carousel with creatures on it (principal 2026-11-12: "make the
+   creatures update a carousel rather than individual ones one at a time, just like the planets"). Each stands on its plinth, scaled to
+   fit its place on the ring from its real extent over a whole cycle of its motion, animated by the game's own setupAnim (creaturePose),
+   turning a little on the spot; the ring pauses on each in turn and the one in front carries its name. */
+function buildCreatureCarousel(C, list, secId, cls) {
+  const sec = $(secId), scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(40, 1, .1, 400);
   scene.add(new THREE.HemisphereLight(0xf2ecff, 0x40305a, .95)); const sun = new THREE.DirectionalLight(0xfff4e6, .7); sun.position.set(3, 6, 4); scene.add(sun);
   scene.add(stars(1400, 60, 140, "#f6eeff", { alpha: .8 }));
   const tex = new THREE.Texture(C.img); tex.needsUpdate = true; tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestMipmapLinearFilter; tex.encoding = THREE.sRGBEncoding;
-  // eight different species at random, one of each species' two individuals -- always one in flight (a winged individual) and the
-  // Ambler, which is the same one for everyone: chosen once, with its weapon ("held"), and saved in creatures.json (cre/weapons.py)
-  const shuf = a => a.map(v => [Math.random(), v]).sort((p, q) => p[0] - q[0]).map(p => p[1]), one = a => a[Math.random() * a.length | 0];
-  const bySp = {}; C.data.creatures.forEach(c => (bySp[c.species] = bySp[c.species] || []).push(c));
-  const flier = one(C.data.creatures.filter(c => c.winged)), ambler = bySp.ambler && one(bySp.ambler);
-  const fixed = [flier, ambler].filter(Boolean), taken = new Set(fixed.map(c => c.species));
-  const pick = shuf(fixed.concat(shuf(Object.keys(bySp).filter(sp => !taken.has(sp))).slice(0, 8 - fixed.length).map(sp => one(bySp[sp]))));
-  const W = C.data.weapons || {};
-  const HOP = new Set(["hopper", "roundling", "gulpmaw"]);
+  const W = C.data.weapons || {}, HOP = new Set(["hopper", "roundling", "gulpmaw"]), n = list.length, RAD = 6.2;
+  // a place on the ring: half-width and height a creature (with its plinth) is scaled into, so neighbours never touch
+  const SLOT_R = RAD * Math.sin(Math.PI / n) * .78, SLOT_H = 2.5;
   const plinth = new THREE.MeshLambertMaterial({ color: 0x2a1f44 }), rim = new THREE.MeshBasicMaterial({ color: 0x2be0c8 });
-  // spaced wide apart, so the one being shown never has a neighbour cut off at the frame's edge
-  let x = 0; const row = [], box = new THREE.Box3(), size = new V3(), mid = new V3();
-  pick.forEach((c, i) => {
-    const m = creatureModel(c, tex, C.data.sheet), w = Math.max(.8, c.hitbox[0]), h = c.hitbox[1];
-    const spot = new THREE.Group(); scene.add(spot);
-    const r = Math.max(.7, w * .62), base = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.05, .18, 40), plinth); base.position.y = -.09; spot.add(base);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.02, .015, 6, 64), rim); ring.rotation.x = Math.PI / 2; spot.add(ring);
+  const ring = new THREE.Group(); scene.add(ring);
+  const box = new THREE.Box3(), b1 = new THREE.Box3();
+  const items = list.map((c, i) => {
+    const m = creatureModel(c, tex, C.data.sheet), h = c.hitbox[1];
+    const holder = new THREE.Group(), spot = new THREE.Group(); holder.add(spot); ring.add(holder);
+    const a = i / n * Math.PI * 2; holder.position.set(Math.sin(a) * RAD, 0, Math.cos(a) * RAD); holder.rotation.y = a;
+    const r = Math.max(.7, Math.max(.8, c.hitbox[0]) * .62);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.05, .18, 40), plinth); base.position.y = -.09; spot.add(base);
+    const rr = new THREE.Mesh(new THREE.TorusGeometry(r * 1.02, .015, 6, 64), rim); rr.rotation.x = Math.PI / 2; spot.add(rr);
     const air = c.winged ? .7 + h * .3 : c.swimmer ? .35 + h * .25 : 0; m.position.y = air; m.userData.air = air; spot.add(m);
     const holding = c.held && W[c.held] && m.userData.byName.arm_r;
     if (holding) heldItem(m.userData.byName.arm_r, W[c.held]);
     const anim = { fly: !!c.winged, hop: HOP.has(c.species), slither: c.species === "coilback", holding: !!holding,
       vertical: c.traits.some(t => /up and down/.test(t)), speed: c.winged ? 0 : .6 };
-    // its real extent through a whole cycle of its motion (wings up and down, legs fore and aft, the weapon's stroke), turned any
-    // way the turntable turns it: a cylinder round the plinth's axis
-    box.makeEmpty(); const b1 = new THREE.Box3();
-    for (let k = 0; k < 12; k++) {
-      creaturePose(m, { ...anim, age: k * 1.9, walk: k * .79, swing: k / 11 }); spot.updateMatrixWorld(true);
-      b1.setFromObject(spot); box.union(b1);
-    }
-    const rh = Math.max(r * 1.05, Math.hypot(Math.max(Math.abs(box.min.x), Math.abs(box.max.x)), Math.max(Math.abs(box.min.z), Math.abs(box.max.z)))) + .08;
-    const top = box.max.y + .12, bot = -.25;
-    x += i ? rh + 9 : 0; spot.position.x = x; x += rh;
-    const el = document.createElement("div"); el.className = "dlabel clabel"; el.innerHTML = `<b>${c.epithet} ${c.name}</b>`; labelsEl.appendChild(el);
-    row.push({ spot, m, el, rh, top, bot, anim, phase: Math.random() * 6.28, walk: 0, swing: 0, next: 2 + Math.random() * 2 });
+    // its extent over a whole cycle of motion, as a cylinder round the plinth's axis (it turns), then scaled into the place
+    box.makeEmpty();
+    for (let k = 0; k < 12; k++) { creaturePose(m, { ...anim, age: k * 1.9, walk: k * .79, swing: k / 11 }); spot.updateMatrixWorld(true); b1.setFromObject(spot); box.union(b1); }
+    spot.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(spot.matrixWorld).invert(); box.applyMatrix4(inv);
+    const rh = Math.max(r * 1.05, Math.hypot(Math.max(Math.abs(box.min.x), Math.abs(box.max.x)), Math.max(Math.abs(box.min.z), Math.abs(box.max.z))));
+    const k = Math.min(SLOT_R / rh, SLOT_H / Math.max(.5, box.max.y + .1), 1.6); spot.scale.setScalar(k);
+    const el = document.createElement("div"); el.className = `dlabel ${cls}`; el.innerHTML = `<b>${c.epithet} ${c.name}</b>`; labelsEl.appendChild(el);
+    return { c, m, spot, el, anim, phase: Math.random() * 6.28, walk: 0, swing: 0, next: 2 + Math.random() * 2 };
   });
   let R_; const look = new V3(), wp = new V3(), tmp = new V3();
   function layout() {
-    // Each animal framed ON ITS OWN from its real extent, so nothing overflows: on a desktop into the space right of the caption
-    // card (a region 50% of the width and 72% of the height, centred at x +0.42), on a phone above the caption sheet (90% wide, the
-    // top half). The label sits just under the plinth, inside the same region.
-    const n = st.narrow, t = Math.tan(cam.fov * Math.PI / 360), a = cam.aspect;
-    const fw = n ? .86 : .5, fh = n ? .42 : .7, cxN = n ? 0 : .42, cyN = n ? .3 : .02;
-    const stops = [];
-    row.forEach((r, i) => {
-      const halfH = (r.top - r.bot) / 2 + .18, cy = (r.top + r.bot) / 2 - .08;
-      const d = Math.max(halfH / (t * fh), r.rh / (t * a * fw)) * 1.04, cx = r.spot.position.x;
-      const lk = [cx - cxN * d * t * a, cy - cyN * d * t, 0], k = 1 / Math.hypot(.2, 1);
-      const pos = [lk[0], lk[1] + d * .2 * k, d * k];
-      const s = i / row.length, e = (i + 1) / row.length;
-      stops.push({ p: s + .18 / row.length, pos, look: lk }, { p: e - .18 / row.length, pos, look: lk });
-    });
-    stops[0].p = 0; stops[stops.length - 1].p = 1;
-    R_ = rail(stops);
+    // the one in front, framed: on a desktop right of the caption (look shifted left), on a phone above the caption sheet
+    // the front one about 40% of the height, its place a third of the width on a desktop (on a phone a little wider than the screen, neighbours cut)
+    const nw = st.narrow, t = Math.tan(cam.fov * Math.PI / 360), a = cam.aspect, d = Math.max((SLOT_H + .3) / (2 * t * (nw ? .3 : .42)), 2 * SLOT_R / (2 * t * a * (nw ? 1.15 : .36)));
+    R_ = rail([{ p: 0, pos: [0, 1.9, RAD + d], look: [nw ? 0 : -d * t * a * .42, nw ? 1.25 - d * t * .3 : 1.25, RAD - 1] },
+      { p: 1, pos: [0, 1.7, RAD + d * .97], look: [nw ? 0 : -d * t * a * .42, nw ? 1.25 - d * t * .3 : 1.25, RAD - 1] }]);
   }
   function frame(dt, t, p) {
-    R_(p, cam.position, look); cam.position.x += st.px * .4; cam.position.y += st.py * .25; cam.lookAt(look);
-    row.forEach((r, i) => {
-      r.m.rotation.y = Math.PI + .75 + Math.sin(t * .35 + r.phase) * .4;        // faces the camera (the renderer's Ry 180), turning slowly
+    R_(p, cam.position, look); cam.position.x += st.px * .6; cam.position.y += st.py * .4; cam.lookAt(look);
+    // a pause on each, then a smooth turn to the next
+    const x = p * (n - .6), i0 = Math.floor(x), f = x - i0, e = i0 + smooth(.4, 1, f);
+    ring.rotation.y = -Math.min(e, n - 1) / n * Math.PI * 2;
+    items.forEach(r => {
+      r.m.rotation.y = Math.PI + Math.sin(t * .35 + r.phase) * .45;          // facing out of the ring, turning a little
       if (r.m.userData.air) r.m.position.y = r.m.userData.air + Math.sin(t * 1.6 + r.phase) * (r.anim.fly ? .1 : .06);
-      // the game's clocks: age in ticks, the walk cycle advancing by its speed a tick; an armed Ambler swings every few seconds
       const A = r.anim; r.walk += A.speed * 20 * dt;
       if (A.holding) { r.next -= dt; if (r.next < 0) { r.swing = 1e-6; r.next = 2.5 + Math.random() * 2; } if (r.swing > 0) r.swing = r.swing + dt / .3 > 1 ? 0 : r.swing + dt / .3; }
       creaturePose(r.m, { ...A, age: (t + r.phase) * 20, walk: r.walk, swing: r.swing });
-      r.spot.getWorldPosition(wp); wp.y += r.bot; const q = project(wp, cam, tmp);
-      const on = !q.behind && q.x > -80 && q.x < innerWidth + 80;
-      r.el.style.opacity = on ? "1" : "0"; r.el.classList.toggle("on", on);
-      r.el.style.transform = `translate(${q.x}px, ${q.y + 6}px) translateX(-50%)`;
+      r.spot.getWorldPosition(wp);
+      const front = smooth(RAD * .7, RAD * .97, wp.z), q = project(wp, cam, tmp);
+      r.el.style.opacity = front.toFixed(3); r.el.classList.toggle("on", front > .05);
+      r.el.style.transform = `translate(${q.x}px, ${q.y + 18}px) translateX(-50%)`;
     });
   }
-  function show(v) { labelsEl.querySelectorAll(".clabel").forEach(e => e.style.display = v ? "" : "none"); }
+  function show(v) { labelsEl.querySelectorAll("." + cls).forEach(e => e.style.display = v ? "" : "none"); }
   return { sec, scene, cam, layout, frame, show, sky: "front" };
 }
